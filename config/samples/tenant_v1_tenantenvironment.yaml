@@ -4,6 +4,25 @@ metadata:
   labels:
     app.kubernetes.io/name: operator-demo
     app.kubernetes.io/managed-by: kustomize
-  name: tenantenvironment-sample
+  name: standard-tenant-acme
 spec:
-  # TODO(user): Add fields here
+  tenantId: "acme-corp"
+  displayName: "Acme Corporation"
+  applicationImage: "nginx:1.25"
+  applicationPort: 80
+  replicas: 2
+  resourceQuotas:
+    cpuLimit: "1"
+    memoryLimit: "2Gi"
+    storageLimit: "5Gi"
+    podLimit: 5
+  database:
+    # Uses shared PostgreSQL instance with separate database
+    dedicatedInstance: false
+    performanceTier: "standard"
+  networkIsolation: true
+  environment:
+    - name: "TENANT_ID"
+      value: "acme-corp"
+    - name: "APP_ENV"
+      value: "production"

@@ -1,0 +1,36 @@
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  labels:
+    app.kubernetes.io/name: operator-demo
+    app.kubernetes.io/managed-by: kustomize
+    tenant-tier: "enterprise"
+  name: enterprise-tenant-globodyne
+spec:
+  tenantId: "globodyne-systems"
+  displayName: "Globodyne Systems Inc."
+  applicationImage: "nginx:1.25"
+  applicationPort: 80
+  replicas: 3
+  resourceQuotas:
+    cpuLimit: "4"
+    memoryLimit: "8Gi"
+    storageLimit: "50Gi"
+    podLimit: 15
+  database:
+    # Uses dedicated PostgreSQL instance for data isolation
+    dedicatedInstance: true
+    storageSize: "100Gi"
+    version: "15"
+    performanceTier: "enterprise"
+    databaseName: "globodyne_main"
+  networkIsolation: true
+  environment:
+    - name: "TENANT_ID"
+      value: "globodyne-systems"
+    - name: "APP_ENV"
+      value: "production"
+    - name: "ENTERPRISE_FEATURES"
+      value: "true"
+    - name: "MAX_CONNECTIONS"
+      value: "200"
