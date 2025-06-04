@@ -1,0 +1,9 @@
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  labels:
+    app.kubernetes.io/name: operator-demo
+    app.kubernetes.io/managed-by: kustomize
+  name: tenantenvironment-sample
+spec:
+  # TODO(user): Add fields here
