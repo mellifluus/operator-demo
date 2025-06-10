@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	tenantv1 "github.com/mellifluus/operator-demo.git/api/v1"
@@ -33,23 +34,54 @@ type TenantEnvironmentReconciler struct {
 	Scheme *runtime.Scheme
 }
 
+const (
+	tenantEnvironmentFinalizer = "tenant.core.mellifluus.io/finalizer"
+)
+
 // +kubebuilder:rbac:groups=tenant.core.mellifluus.io,resources=tenantenvironments,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=tenant.core.mellifluus.io,resources=tenantenvironments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tenant.core.mellifluus.io,resources=tenantenvironments/finalizers,verbs=update
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the TenantEnvironment object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.21.0/pkg/reconcile
 func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = logf.FromContext(ctx)
+	log := logf.FromContext(ctx)
 
-	// TODO(user): your logic here
+	tenantEnv, err := GetTenantEnvironment(ctx, r.Client, req.NamespacedName)
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Handle deletion
+	if !tenantEnv.ObjectMeta.DeletionTimestamp.IsZero() {
+		if controllerutil.ContainsFinalizer(tenantEnv, tenantEnvironmentFinalizer) {
+			log.Info("Cleaning up tenant", "tenantId", tenantEnv.Spec.TenantID)
+
+			// Delete namespace
+			if err := DeleteNamespaceForTenant(ctx, r.Client, tenantEnv.Spec.TenantID, log); err != nil {
+				log.Error(err, "Failed to delete namespace")
+				return ctrl.Result{}, err
+			}
+
+			controllerutil.RemoveFinalizer(tenantEnv, tenantEnvironmentFinalizer)
+			return ctrl.Result{}, r.Update(ctx, tenantEnv)
+		}
+		return ctrl.Result{}, nil
+	}
+
+	// Add finalizer if not present
+	if !controllerutil.ContainsFinalizer(tenantEnv, tenantEnvironmentFinalizer) {
+		controllerutil.AddFinalizer(tenantEnv, tenantEnvironmentFinalizer)
+		return ctrl.Result{Requeue: true}, r.Update(ctx, tenantEnv)
+	}
+
+	// Main reconciliation logic
+	log.Info("Reconciling tenant", "tenantId", tenantEnv.Spec.TenantID)
+
+	// Create namespace for tenant
+	if err := CreateNamespaceForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+		log.Error(err, "Failed to create namespace")
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
