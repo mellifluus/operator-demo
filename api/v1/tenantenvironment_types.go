@@ -24,13 +24,6 @@ import (
 
 // TenantEnvironmentSpec defines the desired state of TenantEnvironment
 type TenantEnvironmentSpec struct {
-	// TenantID is the unique identifier for the tenant
-	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:MinLength=3
-	// +kubebuilder:validation:MaxLength=63
-	// +kubebuilder:validation:Pattern=^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$
-	TenantID string `json:"tenantId"`
-
 	// DisplayName is a human-readable name for the tenant
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:MinLength=1

@@ -4,9 +4,8 @@ metadata:
   labels:
     app.kubernetes.io/name: operator-demo
     app.kubernetes.io/managed-by: kustomize
-  name: standard-tenant-acme
+  name: acme-corp
 spec:
-  tenantId: "acme-corp"
   displayName: "Acme Corporation"
   applicationImage: "nginx:1.25"
   applicationPort: 80
@@ -22,7 +21,5 @@ spec:
     performanceTier: "standard"
   networkIsolation: true
   environment:
-    - name: "TENANT_ID"
-      value: "acme-corp"
     - name: "APP_ENV"
       value: "production"

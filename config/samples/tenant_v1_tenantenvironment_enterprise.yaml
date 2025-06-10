@@ -5,9 +5,8 @@ metadata:
     app.kubernetes.io/name: operator-demo
     app.kubernetes.io/managed-by: kustomize
     tenant-tier: "enterprise"
-  name: enterprise-tenant-globodyne
+  name: globodyne-systems
 spec:
-  tenantId: "globodyne-systems"
   displayName: "Globodyne Systems Inc."
   applicationImage: "nginx:1.25"
   applicationPort: 80
@@ -26,8 +25,6 @@ spec:
     databaseName: "globodyne_main"
   networkIsolation: true
   environment:
-    - name: "TENANT_ID"
-      value: "globodyne-systems"
     - name: "APP_ENV"
       value: "production"
     - name: "ENTERPRISE_FEATURES"

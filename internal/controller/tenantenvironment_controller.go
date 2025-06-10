@@ -54,10 +54,10 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Handle deletion
 	if !tenantEnv.ObjectMeta.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(tenantEnv, tenantEnvironmentFinalizer) {
-			log.Info("Cleaning up tenant", "tenantId", tenantEnv.Spec.TenantID)
+			log.Info("Cleaning up tenant", "uid", tenantEnv.UID, "displayName", tenantEnv.Spec.DisplayName)
 
 			// Delete namespace
-			if err := DeleteNamespaceForTenant(ctx, r.Client, tenantEnv.Spec.TenantID, log); err != nil {
+			if err := DeleteNamespaceForTenant(ctx, r.Client, string(tenantEnv.UID), log); err != nil {
 				log.Error(err, "Failed to delete namespace")
 				return ctrl.Result{}, err
 			}
@@ -75,7 +75,7 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Main reconciliation logic
-	log.Info("Reconciling tenant", "tenantId", tenantEnv.Spec.TenantID)
+	log.Info("Reconciling tenant", "uid", tenantEnv.UID, "displayName", tenantEnv.Spec.DisplayName)
 
 	// Create namespace for tenant
 	if err := CreateNamespaceForTenant(ctx, r.Client, tenantEnv, log); err != nil {

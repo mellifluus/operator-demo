@@ -259,17 +259,10 @@ spec:
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                     x-kubernetes-int-or-string: true
                 type: object
-              tenantId:
-                description: TenantID is the unique identifier for the tenant
-                maxLength: 63
-                minLength: 3
-                pattern: ^[a-z0-9]([a-z0-9\-]*[a-z0-9])?$
-                type: string
             required:
             - applicationImage
             - database
             - displayName
-            - tenantId
             type: object
           status:
             description: TenantEnvironmentStatus defines the observed state of TenantEnvironment

@@ -40,7 +40,7 @@ func GetTenantEnvironment(ctx context.Context, c client.Client, namespacedName t
 
 // CreateNamespaceForTenant creates a namespace for the given tenant
 func CreateNamespaceForTenant(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, log logr.Logger) error {
-	namespaceName := "tenant-" + tenantEnv.Spec.TenantID
+	namespaceName := "tenant-" + string(tenantEnv.UID)
 
 	var namespace corev1.Namespace
 	err := c.Get(ctx, types.NamespacedName{Name: namespaceName}, &namespace)
@@ -50,7 +50,7 @@ func CreateNamespaceForTenant(ctx context.Context, c client.Client, tenantEnv *t
 			ObjectMeta: metav1.ObjectMeta{
 				Name: namespaceName,
 				Labels: map[string]string{
-					"tenant.core.mellifluus.io/tenant-id":     tenantEnv.Spec.TenantID,
+					"tenant.core.mellifluus.io/tenant-uid":    string(tenantEnv.UID),
 					"tenant.core.mellifluus.io/managed-by":    "tenant-operator",
 					"tenant.core.mellifluus.io/resource-name": tenantEnv.Name,
 				},
