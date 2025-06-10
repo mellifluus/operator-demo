@@ -42,6 +42,7 @@ const (
 // +kubebuilder:rbac:groups=tenant.core.mellifluus.io,resources=tenantenvironments/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=tenant.core.mellifluus.io,resources=tenantenvironments/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -56,7 +57,15 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		if controllerutil.ContainsFinalizer(tenantEnv, tenantEnvironmentFinalizer) {
 			log.Info("Cleaning up tenant", "uid", tenantEnv.UID, "displayName", tenantEnv.Spec.DisplayName)
 
-			// Delete namespace
+			// Delete ResourceQuota if it exists
+			if tenantEnv.Spec.ResourceQuotas != nil {
+				if err := DeleteResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+					log.Error(err, "Failed to delete ResourceQuota")
+					return ctrl.Result{}, err
+				}
+			}
+
+			// Delete namespace (this will also delete the ResourceQuota since it's in the namespace)
 			if err := DeleteNamespaceForTenant(ctx, r.Client, string(tenantEnv.UID), log); err != nil {
 				log.Error(err, "Failed to delete namespace")
 				return ctrl.Result{}, err
@@ -81,6 +90,14 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if err := CreateNamespaceForTenant(ctx, r.Client, tenantEnv, log); err != nil {
 		log.Error(err, "Failed to create namespace")
 		return ctrl.Result{}, err
+	}
+
+	// Create ResourceQuota for tenant if specified
+	if tenantEnv.Spec.ResourceQuotas != nil {
+		if err := CreateResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+			log.Error(err, "Failed to create ResourceQuota")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
