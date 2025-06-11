@@ -123,8 +123,33 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TenantEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Add a runnable that will execute after the manager starts and cache is ready
+	err := mgr.Add(&startupRunner{
+		client: mgr.GetClient(),
+	})
+	if err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tenantv1.TenantEnvironment{}).
 		Named("tenantenvironment").
 		Complete(r)
+}
+
+type startupRunner struct {
+	client client.Client
+}
+
+func (s *startupRunner) Start(ctx context.Context) error {
+	log := logf.Log.WithName("tenantenvironment-startup")
+
+	if err := ensureSharedServicesNamespace(ctx, s.client, log); err != nil {
+		log.Error(err, "Failed to ensure shared services namespace on startup")
+		return err
+	}
+
+	log.Info("Startup initialization completed successfully")
+
+	return nil
 }
