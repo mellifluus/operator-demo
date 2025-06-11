@@ -6,10 +6,15 @@
 </head>
 <body class="bg-gray-100 p-6">
   <div class="flex justify-between items-center mb-4">
-    <h1 class="text-2xl font-bold">Custom Resources</h1>
-    <a href="/create" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Create CR</a>
-  </div>
-
+		<h1 class="text-2xl font-bold">Custom Resources</h1>
+		<div class="flex items-center space-x-4">
+			<div class="flex items-center space-x-2">
+				<input id="autorefresh" type="checkbox" <%= req.query.autorefresh === 'true' ? 'checked' : '' %> />
+				<label for="autorefresh" class="text-sm">Auto-refresh</label>
+			</div>
+			<a href="/create" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Create CR</a>
+		</div>
+	</div>
   <table class="table-auto w-full bg-white shadow-md rounded-lg overflow-hidden border-collapse">
     <thead class="bg-gray-200">
       <tr>
@@ -53,4 +58,25 @@
     </tbody>
   </table>
 </body>
+<script>
+  const checkbox = document.getElementById('autorefresh')
+
+  checkbox.addEventListener('change', () => {
+    const params = new URLSearchParams(window.location.search)
+    if (checkbox.checked) {
+      params.set('autorefresh', 'true')
+    } else {
+      params.delete('autorefresh')
+    }
+    window.location.search = params.toString()
+  })
+
+  if (checkbox.checked) {
+    setInterval(() => {
+      const params = new URLSearchParams(window.location.search)
+      params.set('autorefresh', 'true')
+      window.location.search = params.toString()
+    }, 10000)
+  }
+</script>
 </html>

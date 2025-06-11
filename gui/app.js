@@ -22,13 +22,14 @@ const plural = 'tenantenvironments'
 
 app.get('/', async (req, res) => {
   try {
-		const result = await k8sApi.listNamespacedCustomObject({ group, version, namespace, plural })
-    res.render('index', { crs: result.items })
+    const result = await k8sApi.listNamespacedCustomObject({ group, version, namespace, plural });
+    res.render('index', { crs: result.items, req });
   } catch (err) {
-    console.error(err.body || err)
-    res.send('Failed to load CRs')
+    console.error(err.body || err);
+    res.send('Failed to load CRs');
   }
 })
+
 
 app.get('/create', (req, res) => {
   res.render('details', { 
