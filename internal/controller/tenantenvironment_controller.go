@@ -149,6 +149,11 @@ func (s *startupRunner) Start(ctx context.Context) error {
 		return err
 	}
 
+	if err := ensureSharedPostgreSQLConfigMap(ctx, s.client, log); err != nil {
+		log.Error(err, "Failed to ensure shared PostgreSQL config on startup")
+		return err
+	}
+
 	log.Info("Startup initialization completed successfully")
 
 	return nil

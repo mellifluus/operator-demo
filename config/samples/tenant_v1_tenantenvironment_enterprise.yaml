@@ -19,7 +19,7 @@ spec:
   database:
     # Uses dedicated PostgreSQL instance for data isolation
     dedicatedInstance: true
-    storageSize: "100Gi"
+    storageSize: "30Gi"
     version: "15"
     performanceTier: "enterprise"
     databaseName: "globodyne_main"

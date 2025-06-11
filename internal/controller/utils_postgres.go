@@ -18,7 +18,6 @@ package controller
 
 import (
 	"context"
-	"crypto/rand"
 	"embed"
 	"fmt"
 	"strconv"
@@ -48,11 +47,6 @@ const (
 	SharedInstanceTenantCountLabel = "tenant.core.mellifluus.io/tenant-count"
 )
 
-// Helper function to get int32 pointer
-func int32Ptr(i int32) *int32 {
-	return &i
-}
-
 // CreatePostgreSQLForTenant creates PostgreSQL database resources for a tenant
 func CreatePostgreSQLForTenant(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, log logr.Logger) error {
 	if tenantEnv.Spec.Database.DedicatedInstance {
@@ -66,7 +60,7 @@ func createDedicatedPostgreSQL(ctx context.Context, c client.Client, tenantEnv *
 	namespaceName := "tenant-" + string(tenantEnv.UID)
 
 	// Create PostgreSQL Secret with credentials
-	if err := createPostgreSQLSecret(ctx, c, tenantEnv, namespaceName, log); err != nil {
+	if err := createPostgreSQLSecret(ctx, c, namespaceName, "postgresql", log); err != nil {
 		return err
 	}
 
@@ -80,29 +74,55 @@ func createDedicatedPostgreSQL(ctx context.Context, c client.Client, tenantEnv *
 		return err
 	}
 
-	// Create PostgreSQL ConfigMap with secure settings
-	if err := createPostgreSQLConfigMap(ctx, c, namespaceName, "postgresql-config", log); err != nil {
+	// Copy PostgreSQL ConfigMap from shared-services to tenant namespace
+	if err := copyPostgreSQLConfigMapToNamespace(ctx, c, namespaceName, log); err != nil {
 		return err
 	}
 
 	return nil
 }
 
-// createPostgreSQLSecret creates a secret with PostgreSQL credentials
-func createPostgreSQLSecret(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, namespace string, log logr.Logger) error {
-	secretName := "postgresql-secret"
+// createSharedPostgreSQLEntry creates a database entry in the shared PostgreSQL instance
+func createSharedPostgreSQLEntry(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, log logr.Logger) error {
+	// 1. Find or create an available shared PostgreSQL instance
+	sharedInstanceName, err := findOrCreateAvailableSharedInstance(ctx, c, log)
+	if err != nil {
+		return err
+	}
+
+	// 2. Create secret with tenant database credentials
+	if err := createSharedPostgreSQLSecret(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
+		return err
+	}
+
+	// 3. Create ConfigMap with connection info
+	if err := createSharedPostgreSQLConfig(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
+		return err
+	}
+
+	// 4. Update tenant count for the shared instance (only once per tenant)
+	if err := addTenantToSharedInstance(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
+		return err
+	}
+
+	// 5. Create database initialization Job
+	if err := createDatabaseInitJob(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// createPostgreSQLSecret creates a master secret for PostgreSQL instance
+func createPostgreSQLSecret(ctx context.Context, c client.Client, namespace, instanceName string, log logr.Logger) error {
+	secretName := instanceName + "-master-secret"
 
 	var secret corev1.Secret
 	err := c.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, &secret)
 
 	if errors.IsNotFound(err) {
-		databaseName := tenantEnv.Spec.Database.DatabaseName
-		if databaseName == "" {
-			databaseName = "tenant_db"
-		}
-
 		// Generate secure random password
-		password, err := generatePassword(24)
+		password, err := generatePassword(32)
 		if err != nil {
 			return fmt.Errorf("failed to generate secure password: %w", err)
 		}
@@ -112,15 +132,15 @@ func createPostgreSQLSecret(ctx context.Context, c client.Client, tenantEnv *ten
 				Name:      secretName,
 				Namespace: namespace,
 				Labels: map[string]string{
-					"tenant.core.mellifluus.io/tenant-uid": string(tenantEnv.UID),
 					"tenant.core.mellifluus.io/managed-by": "tenant-operator",
 					"app":                                  "postgresql",
+					"instance":                             instanceName,
 				},
 			},
 			Type: corev1.SecretTypeOpaque,
 			Data: map[string][]byte{
-				"POSTGRES_DB":       []byte(databaseName),
-				"POSTGRES_USER":     []byte("tenant_user"),
+				"POSTGRES_DB":       []byte("postgres"),
+				"POSTGRES_USER":     []byte("postgres"),
 				"POSTGRES_PASSWORD": []byte(password),
 			},
 		}
@@ -128,7 +148,7 @@ func createPostgreSQLSecret(ctx context.Context, c client.Client, tenantEnv *ten
 		if err := c.Create(ctx, &secret); err != nil {
 			return err
 		}
-		log.Info("Created PostgreSQL secret", "namespace", namespace, "secret", secretName)
+		log.Info("Created PostgreSQL master secret", "namespace", namespace, "instance", instanceName, "secret", secretName)
 	} else if err != nil {
 		return err
 	}
@@ -199,7 +219,7 @@ func createPostgreSQLStatefulSet(ctx context.Context, c client.Client, tenantEnv
 									{
 										SecretRef: &corev1.SecretEnvSource{
 											LocalObjectReference: corev1.LocalObjectReference{
-												Name: "postgresql-secret",
+												Name: "postgresql-master-secret",
 											},
 										},
 									},
@@ -336,37 +356,6 @@ func createPostgreSQLService(ctx context.Context, c client.Client, tenantEnv *te
 	return nil
 }
 
-// createSharedPostgreSQLEntry creates a database entry in the shared PostgreSQL instance
-func createSharedPostgreSQLEntry(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, log logr.Logger) error {
-	// 1. Find or create an available shared PostgreSQL instance
-	sharedInstanceName, err := findOrCreateAvailableSharedInstance(ctx, c, log)
-	if err != nil {
-		return err
-	}
-
-	// 2. Create secret with tenant database credentials
-	if err := createSharedPostgreSQLSecret(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
-		return err
-	}
-
-	// 3. Create ConfigMap with connection info
-	if err := createSharedPostgreSQLConfig(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
-		return err
-	}
-
-	// 4. Update tenant count for the shared instance (only once per tenant)
-	if err := addTenantToSharedInstance(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
-		return err
-	}
-
-	// 5. Create database initialization Job
-	if err := createDatabaseInitJob(ctx, c, tenantEnv, sharedInstanceName, log); err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // findOrCreateAvailableSharedInstance finds a shared instance with available capacity or creates a new one
 func findOrCreateAvailableSharedInstance(ctx context.Context, c client.Client, log logr.Logger) (string, error) {
 	sharedNamespace := "shared-services"
@@ -420,16 +409,14 @@ func findOrCreateAvailableSharedInstance(ctx context.Context, c client.Client, l
 // createSharedPostgreSQLInstance creates a complete shared PostgreSQL instance
 func createSharedPostgreSQLInstance(ctx context.Context, c client.Client, namespace, instanceName string, log logr.Logger) error {
 	// Create master secret
-	if err := createSharedPostgreSQLMasterSecret(ctx, c, namespace, instanceName, log); err != nil {
+	if err := createPostgreSQLSecret(ctx, c, namespace, instanceName, log); err != nil {
 		return err
 	}
 
-	// Create PostgreSQL ConfigMap with secure settings
-	if err := createPostgreSQLConfigMap(ctx, c, namespace, "shared-postgresql-config", log); err != nil {
-		return err
-	}
+	// ConfigMap already exists in shared-services namespace from startup
+	// No need to create it again - the StatefulSet will reference the shared one
 
-	// Create StatefulSet
+	// Create StatefulSet (it will reference the shared postgresql-config ConfigMap)
 	if err := createSharedPostgreSQLStatefulSet(ctx, c, namespace, instanceName, log); err != nil {
 		return err
 	}
@@ -555,49 +542,6 @@ func removeTenantFromSharedInstance(ctx context.Context, c client.Client, tenant
 	return nil
 }
 
-// createSharedPostgreSQLMasterSecret creates the master credentials for shared PostgreSQL
-func createSharedPostgreSQLMasterSecret(ctx context.Context, c client.Client, namespace, instanceName string, log logr.Logger) error {
-	secretName := instanceName + "-master"
-
-	var secret corev1.Secret
-	err := c.Get(ctx, types.NamespacedName{Name: secretName, Namespace: namespace}, &secret)
-
-	if errors.IsNotFound(err) {
-		// Generate secure random password for master user
-		masterPassword, err := generatePassword(32)
-		if err != nil {
-			return fmt.Errorf("failed to generate secure master password: %w", err)
-		}
-
-		secret = corev1.Secret{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      secretName,
-				Namespace: namespace,
-				Labels: map[string]string{
-					"tenant.core.mellifluus.io/managed-by": "tenant-operator",
-					"app":                                  "shared-postgresql",
-					"instance":                             instanceName,
-				},
-			},
-			Type: corev1.SecretTypeOpaque,
-			Data: map[string][]byte{
-				"POSTGRES_DB":       []byte("postgres"),
-				"POSTGRES_USER":     []byte("postgres"),
-				"POSTGRES_PASSWORD": []byte(masterPassword),
-			},
-		}
-
-		if err := c.Create(ctx, &secret); err != nil {
-			return err
-		}
-		log.Info("Created shared PostgreSQL master secret", "namespace", namespace, "instance", instanceName)
-	} else if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // createSharedPostgreSQLStatefulSet creates the shared PostgreSQL StatefulSet
 func createSharedPostgreSQLStatefulSet(ctx context.Context, c client.Client, namespace, instanceName string, log logr.Logger) error {
 	var statefulSet appsv1.StatefulSet
@@ -694,7 +638,7 @@ func createSharedPostgreSQLStatefulSet(ctx context.Context, c client.Client, nam
 								VolumeSource: corev1.VolumeSource{
 									ConfigMap: &corev1.ConfigMapVolumeSource{
 										LocalObjectReference: corev1.LocalObjectReference{
-											Name: "shared-postgresql-config",
+											Name: "postgresql-config",
 										},
 									},
 								},
@@ -1019,10 +963,13 @@ echo "Database initialization completed successfully!"
 	return nil
 }
 
-// createPostgreSQLConfigMap creates a ConfigMap with secure PostgreSQL configuration
-func createPostgreSQLConfigMap(ctx context.Context, c client.Client, namespace string, configMapName string, log logr.Logger) error {
+// ensureSharedPostgreSQLConfigMap ensures a shared PostgreSQL ConfigMap exists in shared-services namespace
+func ensureSharedPostgreSQLConfigMap(ctx context.Context, c client.Client, log logr.Logger) error {
+	sharedNamespace := "shared-services"
+	configMapName := "postgresql-config"
+
 	var configMap corev1.ConfigMap
-	err := c.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: namespace}, &configMap)
+	err := c.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: sharedNamespace}, &configMap)
 
 	if errors.IsNotFound(err) {
 		// Read PostgreSQL configuration from embedded files
@@ -1041,11 +988,10 @@ func createPostgreSQLConfigMap(ctx context.Context, c client.Client, namespace s
 		configMap = corev1.ConfigMap{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      configMapName,
-				Namespace: namespace,
+				Namespace: sharedNamespace,
 				Labels: map[string]string{
 					"app":                                  "postgresql",
 					"tenant.core.mellifluus.io/managed-by": "tenant-operator",
-					"config-type":                          "postgresql",
 				},
 			},
 			Data: map[string]string{
@@ -1055,9 +1001,9 @@ func createPostgreSQLConfigMap(ctx context.Context, c client.Client, namespace s
 		}
 
 		if err := c.Create(ctx, &configMap); err != nil {
-			return fmt.Errorf("failed to create PostgreSQL config ConfigMap: %w", err)
+			return fmt.Errorf("failed to create shared PostgreSQL config ConfigMap: %w", err)
 		}
-		log.Info("Created PostgreSQL configuration ConfigMap", "name", configMapName, "namespace", namespace)
+		log.Info("Created shared PostgreSQL configuration ConfigMap", "name", configMapName, "namespace", sharedNamespace)
 	} else if err != nil {
 		return err
 	}
@@ -1065,25 +1011,44 @@ func createPostgreSQLConfigMap(ctx context.Context, c client.Client, namespace s
 	return nil
 }
 
-// generatePassword generates a cryptographically secure random password
-func generatePassword(length int) (string, error) {
-	// Character set for password generation (alphanumeric + safe symbols)
-	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+// copyPostgreSQLConfigMapToNamespace copies the shared PostgreSQL ConfigMap to a target namespace
+func copyPostgreSQLConfigMapToNamespace(ctx context.Context, c client.Client, targetNamespace string, log logr.Logger) error {
+	sharedNamespace := "shared-services"
+	configMapName := "postgresql-config"
 
-	// Generate random bytes
-	bytes := make([]byte, length)
-	_, err := rand.Read(bytes)
+	// Get the source ConfigMap from shared-services namespace
+	var sourceConfigMap corev1.ConfigMap
+	err := c.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: sharedNamespace}, &sourceConfigMap)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+		return fmt.Errorf("failed to get shared PostgreSQL config: %w", err)
 	}
 
-	// Convert to password using charset
-	password := make([]byte, length)
-	for i := range bytes {
-		password[i] = charset[int(bytes[i])%len(charset)]
+	// Check if target ConfigMap already exists
+	var targetConfigMap corev1.ConfigMap
+	err = c.Get(ctx, types.NamespacedName{Name: configMapName, Namespace: targetNamespace}, &targetConfigMap)
+	if errors.IsNotFound(err) {
+		// Create a new ConfigMap in the target namespace
+		targetConfigMap = corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      configMapName,
+				Namespace: targetNamespace,
+				Labels: map[string]string{
+					"app":                                  "postgresql",
+					"tenant.core.mellifluus.io/managed-by": "tenant-operator",
+				},
+			},
+			Data: sourceConfigMap.Data, // Copy the configuration data
+		}
+
+		if err := c.Create(ctx, &targetConfigMap); err != nil {
+			return fmt.Errorf("failed to copy PostgreSQL config ConfigMap to namespace %s: %w", targetNamespace, err)
+		}
+		log.Info("Copied PostgreSQL configuration ConfigMap", "from", sharedNamespace+"/"+configMapName, "to", targetNamespace+"/"+configMapName)
+	} else if err != nil {
+		return err
 	}
 
-	return string(password), nil
+	return nil
 }
 
 // DeletePostgreSQLForTenant cleans up PostgreSQL resources for a tenant
