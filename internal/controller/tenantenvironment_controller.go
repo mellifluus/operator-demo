@@ -43,6 +43,12 @@ const (
 // +kubebuilder:rbac:groups=tenant.core.mellifluus.io,resources=tenantenvironments/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=resourcequotas,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
@@ -56,6 +62,12 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	if !tenantEnv.ObjectMeta.DeletionTimestamp.IsZero() {
 		if controllerutil.ContainsFinalizer(tenantEnv, tenantEnvironmentFinalizer) {
 			log.Info("Cleaning up tenant", "uid", tenantEnv.UID, "displayName", tenantEnv.Spec.DisplayName)
+
+			// Delete PostgreSQL resources (clean up shared instance tracking)
+			if err := DeletePostgreSQLForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+				log.Error(err, "Failed to delete PostgreSQL resources")
+				return ctrl.Result{}, err
+			}
 
 			// Delete ResourceQuota if it exists
 			if tenantEnv.Spec.ResourceQuotas != nil {
@@ -98,6 +110,12 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			log.Error(err, "Failed to create ResourceQuota")
 			return ctrl.Result{}, err
 		}
+	}
+
+	// Create PostgreSQL database for tenant
+	if err := CreatePostgreSQLForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+		log.Error(err, "Failed to create PostgreSQL database")
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil

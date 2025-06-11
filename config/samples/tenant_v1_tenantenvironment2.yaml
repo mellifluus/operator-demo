@@ -1,0 +1,25 @@
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  labels:
+    app.kubernetes.io/name: operator-demo
+    app.kubernetes.io/managed-by: kustomize
+  name: acme-corp-2
+spec:
+  displayName: "Acme Corporationnn"
+  applicationImage: "nginx:1.25"
+  applicationPort: 80
+  replicas: 2
+  resourceQuotas:
+    cpuLimit: "1"
+    memoryLimit: "2Gi"
+    storageLimit: "5Gi"
+    podLimit: 5
+  database:
+    # Uses shared PostgreSQL instance with separate database
+    dedicatedInstance: false
+    performanceTier: "standard"
+  networkIsolation: true
+  environment:
+    - name: "APP_ENV"
+      value: "production"
