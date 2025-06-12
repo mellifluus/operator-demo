@@ -42,10 +42,10 @@ app.get('/create', (req, res) => {
         applicationPort: 80,
         replicas: 1,
         resourceQuotas: {
-          cpuLimit: '500m',
-          memoryLimit: '1Gi',
-          storageLimit: '5Gi',
-          podLimit: 3
+          cpuLimit: '2',
+          memoryLimit: '4Gi',
+          storageLimit: '10Gi',
+          podLimit: 5
         },
         database: {
           dedicatedInstance: false,

@@ -107,12 +107,38 @@ func CreateResourceQuotaForTenant(ctx context.Context, c client.Client, tenantEn
 
 		if tenantEnv.Spec.ResourceQuotas != nil {
 			if !tenantEnv.Spec.ResourceQuotas.CPULimit.IsZero() {
-				resourceList[corev1.ResourceRequestsCPU] = tenantEnv.Spec.ResourceQuotas.CPULimit
+				// Set limits quota to the specified value
 				resourceList[corev1.ResourceLimitsCPU] = tenantEnv.Spec.ResourceQuotas.CPULimit
+
+				// For dedicated instances, set requests quota to 50% of limits to account for PostgreSQL
+				// For shared instances, set requests quota to 75% of limits
+				requestsMultiplier := "0.5"
+				if !tenantEnv.Spec.Database.DedicatedInstance {
+					requestsMultiplier = "0.75"
+				}
+
+				cpuRequests := tenantEnv.Spec.ResourceQuotas.CPULimit.DeepCopy()
+				if parsed, err := resource.ParseQuantity(cpuRequests.String()); err == nil {
+					if multiplier, err := resource.ParseQuantity(requestsMultiplier); err == nil {
+						cpuRequests.Set(parsed.MilliValue() * multiplier.MilliValue() / 1000)
+						resourceList[corev1.ResourceRequestsCPU] = cpuRequests
+					}
+				}
 			}
 			if !tenantEnv.Spec.ResourceQuotas.MemoryLimit.IsZero() {
-				resourceList[corev1.ResourceRequestsMemory] = tenantEnv.Spec.ResourceQuotas.MemoryLimit
+				// Set limits quota to the specified value
 				resourceList[corev1.ResourceLimitsMemory] = tenantEnv.Spec.ResourceQuotas.MemoryLimit
+
+				// For dedicated instances, set requests quota to 60% of limits to account for PostgreSQL
+				// For shared instances, set requests quota to 75% of limits
+				requestsMultiplier := int64(60)
+				if !tenantEnv.Spec.Database.DedicatedInstance {
+					requestsMultiplier = 75
+				}
+
+				memoryRequests := tenantEnv.Spec.ResourceQuotas.MemoryLimit.DeepCopy()
+				memoryRequests.Set(tenantEnv.Spec.ResourceQuotas.MemoryLimit.Value() * requestsMultiplier / 100)
+				resourceList[corev1.ResourceRequestsMemory] = memoryRequests
 			}
 			if !tenantEnv.Spec.ResourceQuotas.StorageLimit.IsZero() {
 				resourceList[corev1.ResourceRequestsStorage] = tenantEnv.Spec.ResourceQuotas.StorageLimit

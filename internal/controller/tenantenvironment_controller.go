@@ -106,12 +106,12 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// TODO: better handle resource quotas
 	// Create ResourceQuota for tenant if specified
-	// if tenantEnv.Spec.ResourceQuotas != nil {
-	// 	if err := CreateResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
-	// 		log.Error(err, "Failed to create ResourceQuota")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
+	if tenantEnv.Spec.ResourceQuotas != nil {
+		if err := CreateResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+			log.Error(err, "Failed to create ResourceQuota")
+			return ctrl.Result{}, err
+		}
+	}
 
 	// Create PostgreSQL database for tenant (only if not already assigned)
 	if tenantEnv.Spec.Database.Status == "Unassigned" {

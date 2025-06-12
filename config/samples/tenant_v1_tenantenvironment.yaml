@@ -11,10 +11,10 @@ spec:
   applicationPort: 80
   replicas: 2
   resourceQuotas:
-    cpuLimit: "1"
-    memoryLimit: "2Gi"
-    storageLimit: "5Gi"
-    podLimit: 5
+    cpuLimit: "2"
+    memoryLimit: "4Gi"
+    storageLimit: "10Gi"
+    podLimit: 8
   database:
     # Uses shared PostgreSQL instance with separate database
     dedicatedInstance: false
