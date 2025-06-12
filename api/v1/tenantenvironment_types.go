@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -41,7 +40,7 @@ type TenantEnvironmentSpec struct {
 	// Replicas specifies the number of application replicas
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=10
+	// +kubebuilder:validation:Maximum=3
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// ResourceQuotas defines resource limits for the tenant environment
@@ -50,13 +49,6 @@ type TenantEnvironmentSpec struct {
 	// Database configuration for the tenant (required)
 	// +kubebuilder:validation:Required
 	Database TenantDatabaseConfig `json:"database"`
-
-	// NetworkPolicy defines network isolation rules
-	// +kubebuilder:default=true
-	NetworkIsolation bool `json:"networkIsolation,omitempty"`
-
-	// Environment variables for the tenant application
-	Environment []corev1.EnvVar `json:"environment,omitempty"`
 }
 
 // TenantResourceQuotas defines resource limits for a tenant environment
@@ -78,30 +70,11 @@ type TenantResourceQuotas struct {
 	PodLimit int32 `json:"podLimit,omitempty"`
 }
 
-// TenantDatabaseConfig defines PostgreSQL database configuration for a tenant
+// TenantDatabaseConfig defines simplified PostgreSQL database configuration for a tenant
 type TenantDatabaseConfig struct {
-	// Whether to create a dedicated PostgreSQL instance (enterprise) or use shared instance with separate database (default)
+	// Whether to create a dedicated PostgreSQL instance or use shared instance with separate database (default)
 	// +kubebuilder:default=false
 	DedicatedInstance bool `json:"dedicatedInstance,omitempty"`
-
-	// Storage size for the PostgreSQL database (only applies to dedicated instances)
-	// +kubebuilder:default="1Gi"
-	StorageSize resource.Quantity `json:"storageSize,omitempty"`
-
-	// Database name for the tenant (defaults to tenant-{tenantId})
-	// For shared: creates new database with this name in shared instance
-	// For dedicated: creates database with this name in dedicated instance
-	DatabaseName string `json:"databaseName,omitempty"`
-
-	// PostgreSQL version to use (only applies to dedicated instances)
-	// +kubebuilder:default="15"
-	// +kubebuilder:validation:Enum="13";"14";"15";"16"
-	Version string `json:"version,omitempty"`
-
-	// Performance tier for database resources
-	// +kubebuilder:default="standard"
-	// +kubebuilder:validation:Enum=standard;premium;enterprise
-	PerformanceTier string `json:"performanceTier,omitempty"`
 
 	// Status indicates whether the database has been assigned/provisioned
 	// +kubebuilder:default="Unassigned"
@@ -112,7 +85,7 @@ type TenantDatabaseConfig struct {
 // TenantEnvironmentStatus defines the observed state of TenantEnvironment
 type TenantEnvironmentStatus struct {
 	// Phase represents the current phase of the tenant environment
-	// +kubebuilder:validation:Enum=Pending;Provisioning;Ready;Failed;Terminating
+	// +kubebuilder:validation:Enum=Pending;Ready;Failed
 	Phase string `json:"phase,omitempty"`
 
 	// Message provides human-readable details about the current state
@@ -121,36 +94,19 @@ type TenantEnvironmentStatus struct {
 	// Namespace where the tenant environment is deployed
 	Namespace string `json:"namespace,omitempty"`
 
-	// Endpoint where the tenant application is accessible
-	Endpoint string `json:"endpoint,omitempty"`
+	// CreatedAt timestamp when the tenant was created
+	CreatedAt *metav1.Time `json:"createdAt,omitempty"`
 
-	// DatabaseConnection contains database connection information
-	DatabaseConnection *DatabaseConnectionStatus `json:"databaseConnection,omitempty"`
-
-	// Conditions represent the latest available observations of the environment's state
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-
-	// LastReconcileTime is the last time the environment was reconciled
-	LastReconcileTime *metav1.Time `json:"lastReconcileTime,omitempty"`
-}
-
-// DatabaseConnectionStatus contains database connection information
-type DatabaseConnectionStatus struct {
-	// Host is the database host
-	Host string `json:"host,omitempty"`
-
-	// Port is the database port
-	Port int32 `json:"port,omitempty"`
-
-	// DatabaseName is the name of the database
-	DatabaseName string `json:"databaseName,omitempty"`
-
-	// SecretName contains the secret with database credentials
-	SecretName string `json:"secretName,omitempty"`
+	// ReadyAt timestamp when the tenant became ready
+	ReadyAt *metav1.Time `json:"readyAt,omitempty"`
 }
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Display Name",type=string,JSONPath=`.spec.displayName`
+// +kubebuilder:printcolumn:name="Phase",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Namespace",type=string,JSONPath=`.status.namespace`
+// +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // TenantEnvironment is the Schema for the tenantenvironments API.
 type TenantEnvironment struct {

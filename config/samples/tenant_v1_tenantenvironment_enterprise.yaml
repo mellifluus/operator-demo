@@ -19,15 +19,3 @@ spec:
   database:
     # Uses dedicated PostgreSQL instance for data isolation
     dedicatedInstance: true
-    storageSize: "30Gi"
-    version: "15"
-    performanceTier: "enterprise"
-    databaseName: "globodyne_main"
-  networkIsolation: true
-  environment:
-    - name: "APP_ENV"
-      value: "production"
-    - name: "ENTERPRISE_FEATURES"
-      value: "true"
-    - name: "MAX_CONNECTIONS"
-      value: "200"

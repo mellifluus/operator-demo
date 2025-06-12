@@ -18,8 +18,3 @@ spec:
   database:
     # Uses shared PostgreSQL instance with separate database
     dedicatedInstance: false
-    performanceTier: "standard"
-  networkIsolation: true
-  environment:
-    - name: "APP_ENV"
-      value: "production"

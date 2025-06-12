@@ -247,29 +247,11 @@ func createPostgreSQLStatefulSet(ctx context.Context, c client.Client, tenantEnv
 	err := c.Get(ctx, types.NamespacedName{Name: statefulSetName, Namespace: namespace}, &statefulSet)
 
 	if errors.IsNotFound(err) {
-		version := tenantEnv.Spec.Database.Version
-		if version == "" {
-			version = "15"
-		}
-
-		storageSize := tenantEnv.Spec.Database.StorageSize
-		if storageSize.IsZero() {
-			storageSize = resource.MustParse("1Gi")
-		}
-
-		// Determine resource limits based on performance tier
+		version := "15"
+		storageSize := resource.MustParse("1Gi")
 		cpuLimit := "500m"
 		memoryLimit := "1Gi"
 
-		switch tenantEnv.Spec.Database.PerformanceTier {
-		case "premium":
-			cpuLimit = "1"
-			memoryLimit = "2Gi"
-		case "enterprise":
-			cpuLimit = "2"
-			memoryLimit = "4Gi"
-		}
-		// TODO: are the volume mounts needed here if there's a config map?
 		statefulSet = appsv1.StatefulSet{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      statefulSetName,
