@@ -19,7 +19,6 @@ package controller
 import (
 	"context"
 	"crypto/rand"
-	"fmt"
 
 	"github.com/go-logr/logr"
 	corev1 "k8s.io/api/core/v1"
@@ -195,21 +194,33 @@ func ensureSharedServicesNamespace(ctx context.Context, c client.Client, log log
 }
 
 func generatePassword(length int) (string, error) {
-	// Character set for password generation (alphanumeric + safe symbols)
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
 
-	// Generate random bytes
 	bytes := make([]byte, length)
 	_, err := rand.Read(bytes)
 	if err != nil {
-		return "", fmt.Errorf("failed to generate random bytes: %w", err)
+		return "", err
 	}
 
-	// Convert to password using charset
-	password := make([]byte, length)
 	for i := range bytes {
-		password[i] = charset[int(bytes[i])%len(charset)]
+		bytes[i] = charset[bytes[i]%byte(len(charset))]
 	}
 
-	return string(password), nil
+	return string(bytes), nil
+}
+
+func generateId(length int) (string, error) {
+	const charset = "abcdefghijklmnopqrstuvwxyz"
+
+	bytes := make([]byte, length)
+	_, err := rand.Read(bytes)
+	if err != nil {
+		return "", err
+	}
+
+	for i := range bytes {
+		bytes[i] = charset[bytes[i]%byte(len(charset))]
+	}
+
+	return string(bytes), nil
 }

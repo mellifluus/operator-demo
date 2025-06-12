@@ -104,18 +104,37 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
+	// TODO: better handle resource quotas
 	// Create ResourceQuota for tenant if specified
-	if tenantEnv.Spec.ResourceQuotas != nil {
-		if err := CreateResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
-			log.Error(err, "Failed to create ResourceQuota")
+	// if tenantEnv.Spec.ResourceQuotas != nil {
+	// 	if err := CreateResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+	// 		log.Error(err, "Failed to create ResourceQuota")
+	// 		return ctrl.Result{}, err
+	// 	}
+	// }
+
+	// Create PostgreSQL database for tenant (only if not already assigned)
+	if tenantEnv.Spec.Database.Status == "Unassigned" {
+		tenantEnv.Spec.Database.Status = "Provisioning"
+		if err := r.Update(ctx, tenantEnv); err != nil {
+			log.Error(err, "Failed to update database status")
 			return ctrl.Result{}, err
 		}
-	}
 
-	// Create PostgreSQL database for tenant
-	if err := CreatePostgreSQLForTenant(ctx, r.Client, tenantEnv, log); err != nil {
-		log.Error(err, "Failed to create PostgreSQL database")
-		return ctrl.Result{}, err
+		if err := CreatePostgreSQLForTenant(ctx, r.Client, tenantEnv, log); err != nil {
+			log.Error(err, "Failed to create PostgreSQL database")
+			return ctrl.Result{}, err
+		}
+
+		tenantEnv.Spec.Database.Status = "Assigned"
+		if err := r.Update(ctx, tenantEnv); err != nil {
+			log.Error(err, "Failed to update database status")
+			return ctrl.Result{}, err
+		}
+
+		log.Info("Database assigned successfully", "tenant", tenantEnv.Name)
+	} else {
+		log.Info("Database already assigned, skipping...", "tenant", tenantEnv.Name)
 	}
 
 	return ctrl.Result{}, nil

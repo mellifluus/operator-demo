@@ -71,11 +71,19 @@ spec:
                     - premium
                     - enterprise
                     type: string
+                  status:
+                    default: Unassigned
+                    description: Status indicates whether the database has been assigned/provisioned
+                    enum:
+                    - Unassigned
+                    - Provisioning
+                    - Assigned
+                    type: string
                   storageSize:
                     anyOf:
                     - type: integer
                     - type: string
-                    default: 20Gi
+                    default: 1Gi
                     description: Storage size for the PostgreSQL database (only applies
                       to dedicated instances)
                     pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$

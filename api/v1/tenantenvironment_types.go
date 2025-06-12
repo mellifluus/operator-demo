@@ -85,7 +85,7 @@ type TenantDatabaseConfig struct {
 	DedicatedInstance bool `json:"dedicatedInstance,omitempty"`
 
 	// Storage size for the PostgreSQL database (only applies to dedicated instances)
-	// +kubebuilder:default="20Gi"
+	// +kubebuilder:default="1Gi"
 	StorageSize resource.Quantity `json:"storageSize,omitempty"`
 
 	// Database name for the tenant (defaults to tenant-{tenantId})
@@ -102,6 +102,11 @@ type TenantDatabaseConfig struct {
 	// +kubebuilder:default="standard"
 	// +kubebuilder:validation:Enum=standard;premium;enterprise
 	PerformanceTier string `json:"performanceTier,omitempty"`
+
+	// Status indicates whether the database has been assigned/provisioned
+	// +kubebuilder:default="Unassigned"
+	// +kubebuilder:validation:Enum=Unassigned;Provisioning;Assigned
+	Status string `json:"status,omitempty"`
 }
 
 // TenantEnvironmentStatus defines the observed state of TenantEnvironment
