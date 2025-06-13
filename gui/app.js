@@ -39,7 +39,6 @@ app.get('/create', (req, res) => {
       spec: {
         displayName: '',
         applicationImage: 'nginx:latest',
-        applicationPort: 80,
         replicas: 1,
         resourceQuotas: {
           cpuLimit: '2',
@@ -48,10 +47,8 @@ app.get('/create', (req, res) => {
           podLimit: 5
         },
         database: {
-          dedicatedInstance: false,
-          performanceTier: 'standard'
-        },
-        networkIsolation: true
+          dedicatedInstance: false
+        }
       }
     }
   })
@@ -73,7 +70,6 @@ app.post('/create', async (req, res) => {
       spec: {
         displayName: req.body.displayName,
         applicationImage: req.body.applicationImage,
-        applicationPort: parseInt(req.body.applicationPort),
         replicas: parseInt(req.body.replicas),
         resourceQuotas: {
           cpuLimit: req.body.cpuLimit,
@@ -82,10 +78,8 @@ app.post('/create', async (req, res) => {
           podLimit: parseInt(req.body.podLimit)
         },
         database: {
-          dedicatedInstance: req.body.dedicatedInstance === 'true',
-          performanceTier: req.body.performanceTier
-        },
-        networkIsolation: req.body.networkIsolation === 'on'
+          dedicatedInstance: req.body.dedicatedInstance === 'true'
+        }
       }
     }
 
@@ -144,7 +138,6 @@ app.post('/update/:name', async (req, res) => {
       spec: {
         displayName: req.body.displayName,
         applicationImage: req.body.applicationImage,
-        applicationPort: parseInt(req.body.applicationPort),
         replicas: parseInt(req.body.replicas),
         resourceQuotas: {
           cpuLimit: req.body.cpuLimit,
@@ -153,10 +146,8 @@ app.post('/update/:name', async (req, res) => {
           podLimit: parseInt(req.body.podLimit)
         },
         database: {
-          dedicatedInstance: req.body.dedicatedInstance === 'true',
-          performanceTier: req.body.performanceTier
-        },
-        networkIsolation: req.body.networkIsolation === 'on'
+          dedicatedInstance: req.body.dedicatedInstance === 'true'
+        }
       }
     }
 

@@ -43,17 +43,10 @@
       <div class="mb-6">
         <h2 class="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Application Configuration</h2>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Application Image</label>
             <input type="text" name="applicationImage" value="<%= isEdit ? cr.spec.applicationImage : 'nginx:latest' %>" 
-                   class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                   required>
-          </div>
-          
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Application Port</label>
-            <input type="number" name="applicationPort" value="<%= isEdit ? cr.spec.applicationPort : 80 %>" 
                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                    required>
           </div>
@@ -71,31 +64,31 @@
       <div class="mb-6">
         <h2 class="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Resource Quotas</h2>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">CPU Limit</label>
-            <input type="text" name="cpuLimit" value="<%= isEdit ? cr.spec.resourceQuotas.cpuLimit : '500m' %>" 
+            <input type="text" name="cpuLimit" value="<%= isEdit ? cr.spec.resourceQuotas.cpuLimit : '2' %>" 
                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                    placeholder="e.g., 500m, 1, 2" required>
           </div>
           
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Memory Limit</label>
-            <input type="text" name="memoryLimit" value="<%= isEdit ? cr.spec.resourceQuotas.memoryLimit : '1Gi' %>" 
+            <input type="text" name="memoryLimit" value="<%= isEdit ? cr.spec.resourceQuotas.memoryLimit : '4Gi' %>" 
                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                    placeholder="e.g., 512Mi, 1Gi, 2Gi" required>
           </div>
           
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Storage Limit</label>
-            <input type="text" name="storageLimit" value="<%= isEdit ? cr.spec.resourceQuotas.storageLimit : '5Gi' %>" 
+            <input type="text" name="storageLimit" value="<%= isEdit ? cr.spec.resourceQuotas.storageLimit : '10Gi' %>" 
                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                    placeholder="e.g., 5Gi, 10Gi, 50Gi" required>
           </div>
           
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Pod Limit</label>
-            <input type="number" name="podLimit" value="<%= isEdit ? cr.spec.resourceQuotas.podLimit : 3 %>" 
+            <input type="number" name="podLimit" value="<%= isEdit ? cr.spec.resourceQuotas.podLimit : 5 %>" 
                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                    min="1" required>
           </div>
@@ -106,7 +99,7 @@
       <div class="mb-6">
         <h2 class="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Database Configuration</h2>
         
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-1 gap-4">
           <div>
             <label class="block text-sm font-medium text-gray-700 mb-2">Database Type</label>
             <select name="dedicatedInstance" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -114,27 +107,6 @@
               <option value="true" <%= (isEdit && cr.spec.database.dedicatedInstance) ? 'selected' : '' %>>Dedicated Instance</option>
             </select>
           </div>
-          
-          <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Performance Tier</label>
-            <select name="performanceTier" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="standard" <%= (isEdit && cr.spec.database.performanceTier === 'standard') ? 'selected' : '' %>>Standard</option>
-              <option value="premium" <%= (isEdit && cr.spec.database.performanceTier === 'premium') ? 'selected' : '' %>>Premium</option>
-              <option value="enterprise" <%= (isEdit && cr.spec.database.performanceTier === 'enterprise') ? 'selected' : '' %>>Enterprise</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <!-- Network & Additional Settings -->
-      <div class="mb-6">
-        <h2 class="text-lg font-semibold mb-4 text-gray-700 border-b pb-2">Additional Settings</h2>
-        
-        <div class="flex items-center">
-          <input type="checkbox" name="networkIsolation" id="networkIsolation" 
-                 <%= cr.spec.networkIsolation !== false ? 'checked' : '' %>
-                 class="mr-2 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
-          <label for="networkIsolation" class="text-sm font-medium text-gray-700">Enable Network Isolation</label>
         </div>
       </div>
 
