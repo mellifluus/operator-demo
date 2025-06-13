@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -472,51 +473,57 @@ func addTenantToSharedInstance(ctx context.Context, c client.Client, tenantEnv *
 	sharedNamespace := "shared-services"
 	tenantUID := string(tenantEnv.UID)
 
-	var statefulSet appsv1.StatefulSet
-	err := c.Get(ctx, types.NamespacedName{Name: instanceName, Namespace: sharedNamespace}, &statefulSet)
+	// Retry logic with exponential backoff for handling resource version conflicts
+	err := retry.RetryOnConflict(retry.DefaultBackoff, func() error {
+		var statefulSet appsv1.StatefulSet
+		err := c.Get(ctx, types.NamespacedName{Name: instanceName, Namespace: sharedNamespace}, &statefulSet)
+		if err != nil {
+			return err
+		}
+
+		// Get current tenant list from annotations
+		if statefulSet.Annotations == nil {
+			statefulSet.Annotations = make(map[string]string)
+		}
+
+		tenantListStr, exists := statefulSet.Annotations["tenant.core.mellifluus.io/tenant-list"]
+		if !exists {
+			tenantListStr = ""
+		}
+
+		// Parse existing tenant list
+		var tenantList []string
+		if tenantListStr != "" {
+			tenantList = strings.Split(tenantListStr, ",")
+		}
+
+		// Check if this tenant is already in the list
+		for _, existingTenant := range tenantList {
+			if existingTenant == tenantUID {
+				log.Info("Tenant already registered to shared instance", "instance", instanceName, "tenant", tenantUID)
+				return nil // Already exists, nothing to do
+			}
+		}
+
+		// Add the new tenant to the list
+		tenantList = append(tenantList, tenantUID)
+
+		// Update annotations and labels
+		statefulSet.Annotations["tenant.core.mellifluus.io/tenant-list"] = strings.Join(tenantList, ",")
+		if statefulSet.Labels == nil {
+			statefulSet.Labels = make(map[string]string)
+		}
+		statefulSet.Labels[SharedInstanceTenantCountLabel] = strconv.Itoa(len(tenantList))
+
+		// This update might fail with conflict error, which will trigger a retry
+		return c.Update(ctx, &statefulSet)
+	})
+
 	if err != nil {
 		return err
 	}
 
-	// Get current tenant list from annotations
-	if statefulSet.Annotations == nil {
-		statefulSet.Annotations = make(map[string]string)
-	}
-
-	tenantListStr, exists := statefulSet.Annotations["tenant.core.mellifluus.io/tenant-list"]
-	if !exists {
-		tenantListStr = ""
-	}
-
-	// Parse existing tenant list
-	var tenantList []string
-	if tenantListStr != "" {
-		tenantList = strings.Split(tenantListStr, ",")
-	}
-
-	// Check if this tenant is already in the list
-	for _, existingTenant := range tenantList {
-		if existingTenant == tenantUID {
-			log.Info("Tenant already registered to shared instance", "instance", instanceName, "tenant", tenantUID)
-			return nil // Already exists, nothing to do
-		}
-	}
-
-	// Add the new tenant to the list
-	tenantList = append(tenantList, tenantUID)
-
-	// Update annotations and labels
-	statefulSet.Annotations["tenant.core.mellifluus.io/tenant-list"] = strings.Join(tenantList, ",")
-	if statefulSet.Labels == nil {
-		statefulSet.Labels = make(map[string]string)
-	}
-	statefulSet.Labels[SharedInstanceTenantCountLabel] = strconv.Itoa(len(tenantList))
-
-	if err := c.Update(ctx, &statefulSet); err != nil {
-		return err
-	}
-
-	log.Info("Added tenant to shared instance", "instance", instanceName, "tenant", tenantUID, "tenantCount", len(tenantList))
+	log.Info("Successfully added tenant to shared instance", "instance", instanceName, "tenant", tenantUID)
 	return nil
 }
 
