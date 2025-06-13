@@ -38,7 +38,6 @@ app.get('/create', (req, res) => {
       metadata: { name: '' },
       spec: {
         displayName: '',
-        applicationImage: 'nginx:latest',
         replicas: 1,
         resourceQuotas: {
           cpuLimit: '2',
@@ -69,7 +68,6 @@ app.post('/create', async (req, res) => {
       },
       spec: {
         displayName: req.body.displayName,
-        applicationImage: req.body.applicationImage,
         replicas: parseInt(req.body.replicas),
         resourceQuotas: {
           cpuLimit: req.body.cpuLimit,
@@ -137,7 +135,6 @@ app.post('/update/:name', async (req, res) => {
       ...existingCR,
       spec: {
         displayName: req.body.displayName,
-        applicationImage: req.body.applicationImage,
         replicas: parseInt(req.body.replicas),
         resourceQuotas: {
           cpuLimit: req.body.cpuLimit,

@@ -134,6 +134,19 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	- $(CONTAINER_TOOL) buildx rm operator-demo-builder
 	rm Dockerfile.cross
 
+##@ Tenant Service
+
+# Tenant service image name
+TENANT_SERVICE_IMG ?= tenant-service:latest
+
+.PHONY: build-service
+build-service: ## Build docker image for the tenant service.
+	$(CONTAINER_TOOL) build -t ${TENANT_SERVICE_IMG} ./tenant-service/
+
+.PHONY: load-service
+load-service: ## Load tenant service image into kind cluster.
+	kind load docker-image ${TENANT_SERVICE_IMG}
+
 .PHONY: build-installer
 build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
 	mkdir -p dist

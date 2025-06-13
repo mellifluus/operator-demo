@@ -10,6 +10,7 @@ rules:
   - configmaps
   - namespaces
   - persistentvolumeclaims
+  - pods
   - resourcequotas
   - secrets
   - services
@@ -24,6 +25,8 @@ rules:
 - apiGroups:
   - apps
   resources:
+  - deployments
+  - replicasets
   - statefulsets
   verbs:
   - create

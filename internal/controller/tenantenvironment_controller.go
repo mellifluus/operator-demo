@@ -18,12 +18,19 @@ package controller
 
 import (
 	"context"
+	"strings"
 
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tenantv1 "github.com/mellifluus/operator-demo.git/api/v1"
 )
@@ -47,11 +54,22 @@ const (
 // +kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=apps,resources=replicasets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
 
 func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+
+	if strings.HasPrefix(req.Name, "pod-event:") {
+		return r.handlePodEventFromMapping(ctx, req, log)
+	} else if req.Namespace == "default" {
+		log.Info("Reconciling TenantEnvironment", "name", req.Name)
+	} else {
+		return ctrl.Result{}, nil
+	}
 
 	tenantEnv, err := GetTenantEnvironment(ctx, r.Client, req.NamespacedName)
 	if err != nil {
@@ -104,7 +122,6 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		return ctrl.Result{}, err
 	}
 
-	// TODO: better handle resource quotas
 	// Create ResourceQuota for tenant if specified
 	if tenantEnv.Spec.ResourceQuotas != nil {
 		if err := CreateResourceQuotaForTenant(ctx, r.Client, tenantEnv, log); err != nil {
@@ -137,7 +154,110 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 		log.Info("Database already assigned, skipping...", "tenant", tenantEnv.Name)
 	}
 
+	// Create tenant service deployment
+	if err := CreateTenantServiceDeployment(ctx, r.Client, tenantEnv, log); err != nil {
+		log.Error(err, "Failed to create tenant service deployment")
+		return ctrl.Result{}, err
+	}
+
 	return ctrl.Result{}, nil
+}
+
+func (r *TenantEnvironmentReconciler) handlePodEventFromMapping(ctx context.Context, req ctrl.Request, log logr.Logger) (ctrl.Result, error) {
+	parts := strings.Split(req.Name, ":")
+	if len(parts) != 3 {
+		log.Error(nil, "Invalid pod event format", "name", req.Name)
+		return ctrl.Result{}, nil
+	}
+
+	podName := parts[1]
+	tenantEnvName := parts[2]
+
+	tenantEnv, err := GetTenantEnvironment(ctx, r.Client, types.NamespacedName{
+		Name:      tenantEnvName,
+		Namespace: req.Namespace,
+	})
+	if err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	tenantNamespace := "tenant-" + string(tenantEnv.UID)
+	var pod corev1.Pod
+	err = r.Get(ctx, types.NamespacedName{
+		Name:      podName,
+		Namespace: tenantNamespace,
+	}, &pod)
+
+	if err != nil {
+		if client.IgnoreNotFound(err) == nil {
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	_, hasTenantLabel := pod.Labels["tenant.core.mellifluus.io/tenant-uid"]
+	if !hasTenantLabel {
+		return ctrl.Result{}, nil
+	}
+
+	podReady := false
+	for _, condition := range pod.Status.Conditions {
+		if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+			podReady = true
+			break
+		}
+	}
+
+	if podReady {
+		if tenantEnv.Status.ReadyAt == nil {
+			now := metav1.Now()
+			tenantEnv.Status.ReadyAt = &now
+			if err := r.Status().Update(ctx, tenantEnv); err != nil {
+				log.Error(err, "Failed to update TenantEnvironment readyAt status")
+				return ctrl.Result{}, err
+			}
+			log.Info("✅ TenantEnvironment marked as ready!", "tenant", tenantEnv.Name, "readyAt", now)
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+func (r *TenantEnvironmentReconciler) podToTenantEnvironment(ctx context.Context, obj client.Object) []reconcile.Request {
+	pod, ok := obj.(*corev1.Pod)
+	if !ok {
+		return nil
+	}
+
+	// Check if this is a backend service pod
+	if component, hasComponent := pod.Labels["tenant.core.mellifluus.io/component"]; !hasComponent || component != "backend-service" {
+		return nil
+	}
+
+	tenantUID, hasTenantUID := pod.Labels["tenant.core.mellifluus.io/tenant-uid"]
+	if !hasTenantUID {
+		return nil
+	}
+
+	var tenantEnvList tenantv1.TenantEnvironmentList
+	if err := r.List(ctx, &tenantEnvList, client.InNamespace("default")); err != nil {
+		return nil
+	}
+
+	for _, tenantEnv := range tenantEnvList.Items {
+		if string(tenantEnv.UID) == tenantUID {
+			return []reconcile.Request{
+				{
+					NamespacedName: types.NamespacedName{
+						Name:      "pod-event:" + pod.Name + ":" + tenantEnv.Name,
+						Namespace: tenantEnv.Namespace,
+					},
+				},
+			}
+		}
+	}
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -152,6 +272,7 @@ func (r *TenantEnvironmentReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&tenantv1.TenantEnvironment{}).
+		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(r.podToTenantEnvironment)).
 		Named("tenantenvironment").
 		Complete(r)
 }

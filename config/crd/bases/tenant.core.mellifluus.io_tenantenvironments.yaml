@@ -52,16 +52,6 @@ spec:
           spec:
             description: TenantEnvironmentSpec defines the desired state of TenantEnvironment
             properties:
-              applicationImage:
-                description: ApplicationImage specifies the container image for the
-                  tenant's application
-                type: string
-              applicationPort:
-                default: 8080
-                description: ApplicationPort specifies the port the application listens
-                  on
-                format: int32
-                type: integer
               database:
                 description: Database configuration for the tenant (required)
                 properties:
@@ -126,7 +116,6 @@ spec:
                     x-kubernetes-int-or-string: true
                 type: object
             required:
-            - applicationImage
             - database
             - displayName
             type: object

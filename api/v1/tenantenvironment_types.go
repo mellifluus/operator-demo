@@ -29,14 +29,6 @@ type TenantEnvironmentSpec struct {
 	// +kubebuilder:validation:MaxLength=100
 	DisplayName string `json:"displayName"`
 
-	// ApplicationImage specifies the container image for the tenant's application
-	// +kubebuilder:validation:Required
-	ApplicationImage string `json:"applicationImage"`
-
-	// ApplicationPort specifies the port the application listens on
-	// +kubebuilder:default=8080
-	ApplicationPort int32 `json:"applicationPort,omitempty"`
-
 	// Replicas specifies the number of application replicas
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
