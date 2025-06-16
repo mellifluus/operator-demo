@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -30,10 +31,27 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	tenantv1 "github.com/mellifluus/operator-demo.git/api/v1"
 )
+
+var (
+	// Metric to track tenant provisioning time from CR creation to ready
+	tenantProvisioningDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "tenant_provisioning_duration_seconds",
+			Help:    "Time taken to provision a tenant environment from creation to ready",
+			Buckets: []float64{5, 10, 30, 60, 120, 300, 600},
+		},
+		[]string{"dedicated_db"},
+	)
+)
+
+func init() {
+	metrics.Registry.MustRegister(tenantProvisioningDuration)
+}
 
 // TenantEnvironmentReconciler reconciles a TenantEnvironment object
 type TenantEnvironmentReconciler struct {
@@ -110,6 +128,17 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	// Add finalizer if not present
 	if !controllerutil.ContainsFinalizer(tenantEnv, tenantEnvironmentFinalizer) {
 		controllerutil.AddFinalizer(tenantEnv, tenantEnvironmentFinalizer)
+
+		// Set CreatedAt timestamp on first reconciliation
+		if tenantEnv.Status.CreatedAt == nil {
+			now := metav1.Now()
+			tenantEnv.Status.CreatedAt = &now
+			if err := r.Status().Update(ctx, tenantEnv); err != nil {
+				log.Error(err, "Failed to update TenantEnvironment createdAt status")
+				return ctrl.Result{}, err
+			}
+		}
+
 		return ctrl.Result{Requeue: true}, r.Update(ctx, tenantEnv)
 	}
 
@@ -212,6 +241,17 @@ func (r *TenantEnvironmentReconciler) handlePodEventFromMapping(ctx context.Cont
 		if tenantEnv.Status.ReadyAt == nil {
 			now := metav1.Now()
 			tenantEnv.Status.ReadyAt = &now
+			tenantEnv.Status.Phase = "Ready"
+
+			if tenantEnv.Status.CreatedAt != nil {
+				duration := now.Sub(tenantEnv.Status.CreatedAt.Time).Seconds()
+				dedicatedDB := "false"
+				if tenantEnv.Spec.Database.DedicatedInstance {
+					dedicatedDB = "true"
+				}
+				tenantProvisioningDuration.WithLabelValues(dedicatedDB).Observe(duration)
+			}
+
 			if err := r.Status().Update(ctx, tenantEnv); err != nil {
 				log.Error(err, "Failed to update TenantEnvironment readyAt status")
 				return ctrl.Result{}, err

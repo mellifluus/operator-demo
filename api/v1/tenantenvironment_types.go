@@ -77,7 +77,8 @@ type TenantDatabaseConfig struct {
 // TenantEnvironmentStatus defines the observed state of TenantEnvironment
 type TenantEnvironmentStatus struct {
 	// Phase represents the current phase of the tenant environment
-	// +kubebuilder:validation:Enum=Pending;Ready;Failed
+	// +kubebuilder:default="Pending"
+	// +kubebuilder:validation:Enum=Pending;Ready
 	Phase string `json:"phase,omitempty"`
 
 	// Message provides human-readable details about the current state

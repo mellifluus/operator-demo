@@ -42,7 +42,7 @@ var postgresqlConfigs embed.FS
 
 const (
 	// Maximum number of tenants per shared PostgreSQL instance
-	MaxTenantsPerSharedInstance = 2
+	MaxTenantsPerSharedInstance = 10
 
 	// Label to track tenant count in shared instances
 	SharedInstanceTenantCountLabel = "tenant.core.mellifluus.io/tenant-count"

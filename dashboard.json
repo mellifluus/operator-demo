@@ -1,0 +1,57 @@
+{
+  "title": "Kubernetes Operator Metrics",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Reconcile Rate",
+      "targets": [
+        {
+          "expr": "rate(controller_runtime_reconcile_total{controller=\"tenantenvironment\"}[5m])",
+          "legendFormat": "Reconciles",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconcile Errors",
+      "targets": [
+        {
+          "expr": "rate(controller_runtime_reconcile_errors_total{controller=\"tenantenvironment\"}[5m])",
+          "legendFormat": "Errors",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 }
+    },
+    {
+      "type": "timeseries",
+      "title": "Tenant Provisioning Duration (p95)",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tenant_provisioning_duration_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95",
+          "refId": "A"
+        }
+      ],
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 }
+    }
+  ],
+  "schemaVersion": 37,
+  "version": 1,
+  "refresh": "10s"
+}

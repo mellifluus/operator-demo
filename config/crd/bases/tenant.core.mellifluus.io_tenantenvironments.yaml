@@ -134,11 +134,11 @@ spec:
                 description: Namespace where the tenant environment is deployed
                 type: string
               phase:
+                default: Pending
                 description: Phase represents the current phase of the tenant environment
                 enum:
                 - Pending
                 - Ready
-                - Failed
                 type: string
               readyAt:
                 description: ReadyAt timestamp when the tenant became ready
