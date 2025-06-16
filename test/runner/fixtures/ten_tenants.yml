@@ -1,0 +1,99 @@
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-a1
+  namespace: default
+spec:
+  displayName: "Tenant A1"
+  database:
+    dedicatedInstance: false
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-b2
+  namespace: default
+spec:
+  displayName: "Tenant B2"
+  database:
+    dedicatedInstance: false
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-c3
+  namespace: default
+spec:
+  displayName: "Tenant C3"
+  database:
+    dedicatedInstance: false
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-d4
+  namespace: default
+spec:
+  displayName: "Tenant D4"
+  database:
+    dedicatedInstance: true
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-e5
+  namespace: default
+spec:
+  displayName: "Tenant E5"
+  database:
+    dedicatedInstance: false
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-f6
+  namespace: default
+spec:
+  displayName: "Tenant F6"
+  database:
+    dedicatedInstance: true
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-g7
+  namespace: default
+spec:
+  displayName: "Tenant G7"
+  database:
+    dedicatedInstance: false
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-h8
+  namespace: default
+spec:
+  displayName: "Tenant H8"
+  database:
+    dedicatedInstance: false
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-i9
+  namespace: default
+spec:
+  displayName: "Tenant I9"
+  database:
+    dedicatedInstance: true
+---
+apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: tenant-j0
+  namespace: default
+spec:
+  displayName: "Tenant J0"
+  database:
+    dedicatedInstance: false

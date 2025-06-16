@@ -63,6 +63,8 @@ spec:
         args:
           - --leader-elect
           - --health-probe-bind-address=:8081
+          - --metrics-bind-address=:8082
+          - --metrics-secure=false
         image: controller:latest
         name: manager
         ports: []
@@ -93,6 +95,7 @@ spec:
             cpu: 10m
             memory: 64Mi
         volumeMounts: []
+        imagePullPolicy: Never
       volumes: []
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

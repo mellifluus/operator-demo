@@ -176,6 +176,14 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
 	$(KUSTOMIZE) build config/default | $(KUBECTL) delete --ignore-not-found=$(ignore-not-found) -f -
 
+.PHONY: build-controller
+build-controller: ## Build docker image for the controller.
+	$(CONTAINER_TOOL) build -t ${IMG} .
+
+.PHONY: load-controller
+load-controller: ## Load controller image into kind cluster.
+	kind load docker-image ${IMG}
+
 ##@ Dependencies
 
 ## Location to install dependencies to
@@ -227,6 +235,10 @@ $(ENVTEST): $(LOCALBIN)
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+
+.PHONY: test-runner
+test-runner: ## Start operator tests using test/runner/main.go
+	go run ./test/runner/main.go
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

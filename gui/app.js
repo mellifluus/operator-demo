@@ -55,7 +55,6 @@ app.get('/create', (req, res) => {
 
 app.post('/create', async (req, res) => {
   try {
-		console.log(req.body)
     const crData = {
       apiVersion: `${group}/${version}`,
       kind: 'TenantEnvironment',
@@ -120,8 +119,6 @@ app.get('/edit/:name', async (req, res) => {
 // Route to handle edit form submission
 app.post('/update/:name', async (req, res) => {
   try {
-    console.log(req.body)
-    
     // First get the existing CR to preserve metadata
     const existingCR = await k8sApi.getNamespacedCustomObject({ 
       group, 
@@ -174,6 +171,6 @@ app.post('/delete/:name', async (req, res) => {
   }
 })
 
-app.listen(3000, () => {
-  console.log('✅ Server running at http://localhost:3000')
+app.listen(3001, () => {
+  console.log('✅ Server running at http://localhost:3001')
 })

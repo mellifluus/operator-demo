@@ -309,8 +309,8 @@ func createPostgreSQLStatefulSet(ctx context.Context, c client.Client, tenantEnv
 										corev1.ResourceMemory: resource.MustParse(memoryLimit),
 									},
 									Requests: corev1.ResourceList{
-										corev1.ResourceCPU:    resource.MustParse("250m"),
-										corev1.ResourceMemory: resource.MustParse("512Mi"),
+										corev1.ResourceCPU:    resource.MustParse("50m"),
+										corev1.ResourceMemory: resource.MustParse("32Mi"),
 									},
 								},
 								VolumeMounts: []corev1.VolumeMount{
@@ -834,8 +834,8 @@ func removeTenantFromSharedInstance(ctx context.Context, c client.Client, tenant
 									},
 									Resources: corev1.ResourceRequirements{
 										Requests: corev1.ResourceList{
-											corev1.ResourceCPU:    resource.MustParse("100m"),
-											corev1.ResourceMemory: resource.MustParse("128Mi"),
+											corev1.ResourceCPU:    resource.MustParse("50m"),
+											corev1.ResourceMemory: resource.MustParse("32Mi"),
 										},
 										Limits: corev1.ResourceList{
 											corev1.ResourceCPU:    resource.MustParse("200m"),
@@ -962,8 +962,8 @@ func createDatabaseInitJob(ctx context.Context, c client.Client, tenantEnv *tena
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
-									corev1.ResourceCPU:    resource.MustParse("100m"),
-									corev1.ResourceMemory: resource.MustParse("128Mi"),
+									corev1.ResourceCPU:    resource.MustParse("50m"),
+									corev1.ResourceMemory: resource.MustParse("32Mi"),
 								},
 								Limits: corev1.ResourceList{
 									corev1.ResourceCPU:    resource.MustParse("200m"),
