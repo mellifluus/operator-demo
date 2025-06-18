@@ -351,6 +351,7 @@ func createPostgreSQLStatefulSet(ctx context.Context, c client.Client, tenantEnv
 								},
 							},
 						},
+						PriorityClassName: "system-cluster-critical",
 					},
 				},
 				VolumeClaimTemplates: []corev1.PersistentVolumeClaim{

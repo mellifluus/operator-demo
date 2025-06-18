@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql-{{ .Id }}
+  namespace: {{ .Namespace }}
+  annotations:
+    tenant-count: 1
+    tenant-list: {{ .TenantId }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql-{{ .Id }}
+  template:
+    metadata:
+      labels:
+        app: postgresql-{{ .Id }}
+    spec:
+      priorityClassName: system-cluster-critical
+      containers:
+        - name: postgresql
+          image: postgres:15
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          envFrom:
+            - secretRef:
+                name: postgresql-master-secret-{{ .Id }}
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          command:
+            - docker-entrypoint.sh
+            - postgres
+            - -c
+            - config_file=/etc/postgresql/postgresql.conf
+            - -c
+            - hba_file=/etc/postgresql/pg_hba.conf
+          volumeMounts:
+            - name: postgresql-storage
+              mountPath: /var/lib/postgresql/data
+            - name: postgresql-config
+              mountPath: /etc/postgresql/postgresql.conf
+              subPath: postgresql.conf
+              readOnly: true
+            - name: postgresql-config
+              mountPath: /etc/postgresql/pg_hba.conf
+              subPath: pg_hba.conf
+              readOnly: true
+      volumes:
+        - name: postgresql-config
+          configMap:
+            name: postgresql-config
+  volumeClaimTemplates:
+    - metadata:
+        name: postgresql-storage
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi

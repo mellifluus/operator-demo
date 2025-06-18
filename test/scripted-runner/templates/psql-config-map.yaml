@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Name }}
+  namespace: {{ .Namespace }}
+data:
+  postgresql.conf: |
+    listen_addresses = '*'
+    port = 5432
+    max_connections = 100
+    password_encryption = scram-sha-256
+    ssl = off
+    shared_buffers = 128MB
+    effective_cache_size = 384MB
+    work_mem = 4MB
+    maintenance_work_mem = 64MB
+    wal_level = replica
+    max_wal_size = 1GB
+    min_wal_size = 80MB
+    log_destination = 'stderr'
+    logging_collector = on
+    log_directory = 'log'
+    log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+    log_truncate_on_rotation = on
+    log_rotation_age = 1d
+    log_rotation_size = 10MB
+    log_min_messages = warning
+    log_min_error_statement = error
+    log_line_prefix = '%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    statement_timeout = 300000
+    default_transaction_isolation = 'read committed'
+  pg_hba.conf: |
+    local   all             all                                     scram-sha-256
+    host    all             all             127.0.0.1/32            scram-sha-256
+    host    all             all             ::1/128                 scram-sha-256
+    host    all             all             10.0.0.0/8              scram-sha-256
+    host    all             all             172.16.0.0/12           scram-sha-256
+    host    all             all             192.168.0.0/16          scram-sha-256
+    host    all             all             0.0.0.0/0               reject

@@ -236,9 +236,13 @@ golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
 	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 
-.PHONY: test-runner
-test-runner: ## Start operator tests using test/runner/main.go
-	go run ./test/runner/main.go
+.PHONY: test-operator-runner
+test-operator-runner: ## Start operator tests using test/operator-runner/main.go
+	go run ./test/operator-runner/main.go
+
+.PHONY: test-scripted-runner
+test-scripted-runner: ## Start scripted tests using test/scripted-runner/main.go
+	go run ./test/scripted-runner/main.go
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

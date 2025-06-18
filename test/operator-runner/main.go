@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 )
 
 var processes []*exec.Cmd
@@ -44,7 +45,7 @@ func main() {
 	})
 
 	runStep("Creating kind cluster", func() error {
-		return runCommand("kind", "create", "cluster", "--config", wd+"/test/runner/config/kind-config.yaml")
+		return runCommand("kind", "create", "cluster", "--config", wd+"/test/kind-config.yaml")
 	})
 
 	runStep("make install", func() error {
@@ -64,7 +65,7 @@ func main() {
 	})
 
 	runStep("Expose controller metrics via NodePort", func() error {
-		path := wd + "/test/runner/config/controller-metrics-nodeport.yaml"
+		path := wd + "/test/operator-runner/config/controller-metrics-nodeport.yaml"
 		return runCommand("kubectl", "apply", "-f", path)
 	})
 
@@ -122,10 +123,39 @@ func main() {
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		return runCommand("kubectl", "apply", "-f", wd+"/test/runner/fixtures/hundred_shared_tenants.yml")
+		return runCommand("kubectl", "apply", "-f", wd+"/test/operator-runner/fixtures/hundred_shared_tenants.yml")
 	})
 
 	fmt.Println("🕒 CRs deployed. Observe Grafana at http://localhost:3000. Press Ctrl+C to clean up.")
+
+	for {
+		cmd := exec.Command("kubectl", "get", "tenantenvironments", "-A", "-o", `jsonpath={range .items[*]}{.metadata.name}:{.status.phase} {end}`)
+		output, err := cmd.Output()
+		if err != nil {
+			fmt.Println("❌ Failed to get tenant environments:", err)
+			cleanupAndExit()
+		}
+
+		raw := strings.Trim(string(output), "\" \n")
+		statuses := strings.Fields(raw)
+
+		allReady := true
+		for _, status := range statuses {
+			parts := strings.Split(status, ":")
+			if len(parts) != 2 || parts[1] != "Ready" {
+				allReady = false
+				break
+			}
+		}
+
+		if allReady {
+			fmt.Println("✅ All tenants are Ready")
+			break
+		}
+
+		time.Sleep(2 * time.Second)
+	}
+
 	select {}
 }
 
@@ -151,18 +181,6 @@ func runCommand(name string, args ...string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
-}
-
-func startProcess(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
-	cmd.Stdout = nil
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start %s: %w", name, err)
-	}
-	processes = append(processes, cmd)
-	fmt.Printf("Started %s [PID %d]\n", strings.Join(cmd.Args, " "), cmd.Process.Pid)
-	return nil
 }
 
 func setupSignalHandler() {
