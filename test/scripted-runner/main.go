@@ -30,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/klog/v2"
 )
 
 var (
@@ -57,6 +58,13 @@ var kubeClient *kubernetes.Clientset
 func main() {
 	flag.IntVar(&amount, "amount", 100, "Number of tenant environments to create")
 	flag.BoolVar(&dedicatedDB, "dedicated-db", false, "Use dedicated DB")
+
+	klog.InitFlags(nil)
+
+	_ = flag.Set("logtostderr", "false")
+	_ = flag.Set("stderrthreshold", "FATAL")
+	_ = flag.Set("v", "0")
+
 	flag.Parse()
 
 	setupSignalHandler()
@@ -145,9 +153,11 @@ func main() {
 		return nil
 	})
 
-	runStep("Initializing shared-services environment", func() error {
-		return initEnvironment(context.Background())
-	})
+	if !dedicatedDB {
+		runStep("Initializing shared-services environment", func() error {
+			return initEnvironment(context.Background())
+		})
+	}
 
 	runStep(fmt.Sprintf("Deploying %d tenants", amount), func() error {
 		return deployTenants(amount, dedicatedDB)
@@ -292,7 +302,6 @@ func initEnvironment(ctx context.Context) error {
 
 	// Create PostgreSQL ConfigMap
 	cmYaml, err := renderTemplate("psql-config-map.yaml", map[string]string{
-		"Name":      "postgresql-config",
 		"Namespace": ns.Name,
 	})
 	if err != nil {
@@ -386,7 +395,11 @@ func deployTenants(amount int, dedicated bool) error {
 		go func(index int) {
 			defer wg.Done()
 			ctx := context.Background()
-			provisionTenant(ctx, index, dedicated)
+			if dedicated {
+				provisionDedicatedTenant(ctx, index)
+			} else {
+				provisionSharedTenant(ctx, index)
+			}
 		}(i)
 	}
 
@@ -395,7 +408,235 @@ func deployTenants(amount int, dedicated bool) error {
 	return nil
 }
 
-func provisionTenant(ctx context.Context, index int, dedicated bool) {
+func provisionDedicatedTenant(ctx context.Context, index int) {
+	start := time.Now()
+	tenantId := uuid.New().String()
+	tenantNamespaceName := "tenant-" + tenantId
+
+	// TENANT NAMESPACE
+	nsYaml, err := renderTemplate("namespace.yaml", map[string]string{
+		"Name": tenantNamespaceName,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render namespace template: %v\n", tenantId, err)
+		return
+	}
+
+	var ns corev1.Namespace
+	if err := yaml.Unmarshal(nsYaml, &ns); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal namespace YAML: %v\n", tenantId, err)
+		return
+	}
+
+	_, err = kubeClient.CoreV1().Namespaces().Create(ctx, &ns, metav1.CreateOptions{})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to create namespace: %v\n", tenantId, err)
+		return
+	}
+
+	//PSQL CONFIG MAP
+	cmYaml, err := renderTemplate("psql-config-map.yaml", map[string]string{
+		"Namespace": tenantNamespaceName,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render configmap template: %v\n", tenantId, err)
+		return
+	}
+	var cm corev1.ConfigMap
+	if err := yaml.Unmarshal(cmYaml, &cm); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal configmap YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.CoreV1().ConfigMaps(tenantNamespaceName).Create(ctx, &cm, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create configmap: %v\n", tenantId, err)
+		return
+	}
+
+	//TENANT RESOURCE QUOTA
+	rqYaml, err := renderTemplate("resource-quota.yaml", map[string]string{
+		"Namespace": tenantNamespaceName,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render resource quota template: %v\n", tenantId, err)
+		return
+	}
+
+	var rq corev1.ResourceQuota
+	if err := yaml.Unmarshal(rqYaml, &rq); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal resource quota YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.CoreV1().ResourceQuotas(tenantNamespaceName).Create(ctx, &rq, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create resource quota: %v\n", tenantId, err)
+		return
+	}
+
+	// DEDICATED POSTGRESQL INSTANCE
+	instanceId, err := generateId(6)
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to generate instance ID: %v\n", tenantId, err)
+		return
+	}
+	instanceName := "postgresql-" + instanceId
+
+	masterPassword, err := generatePassword(24)
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to generate master password: %v\n", tenantId, err)
+		return
+	}
+	msYaml, err := renderTemplate("psql-master-secret.yaml", map[string]string{
+		"Namespace": tenantNamespaceName,
+		"Id":        instanceId,
+		"Password":  masterPassword,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render master secret template: %v\n", tenantId, err)
+		return
+	}
+	var ms corev1.Secret
+	if err := yaml.Unmarshal(msYaml, &ms); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal master secret YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.CoreV1().Secrets(ms.Namespace).Create(ctx, &ms, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create PostgreSQL instance master secret: %v\n", tenantId, err)
+		return
+	}
+
+	ssYaml, err := renderTemplate("psql-statefulset.yaml", map[string]string{
+		"Id":        instanceId,
+		"Namespace": tenantNamespaceName,
+		"TenantId":  tenantId,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render statefulset template: %v\n", tenantId, err)
+		return
+	}
+	var ss appsv1.StatefulSet
+	if err := yaml.Unmarshal(ssYaml, &ss); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal statefulset YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.AppsV1().StatefulSets(ss.Namespace).Create(ctx, &ss, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create PostgreSQL instance statefulset: %v\n", tenantId, err)
+		return
+	}
+
+	svcYaml, err := renderTemplate("psql-service.yaml", map[string]string{
+		"Id":        instanceId,
+		"Namespace": tenantNamespaceName,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render service template: %v\n", tenantId, err)
+		return
+	}
+	var svc corev1.Service
+	if err := yaml.Unmarshal(svcYaml, &svc); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal service YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.CoreV1().Services(svc.Namespace).Create(ctx, &svc, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create PostgreSQL instance service: %v\n", tenantId, err)
+		return
+	}
+
+	// TENANT DATABASE CONFIG
+	tenantDbPassword, err := generatePassword(24)
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to generate tenant database password: %v\n", tenantId, err)
+		return
+	}
+
+	tsYaml, err := renderTemplate("psql-tenant-secret.yaml", map[string]string{
+		"Namespace": tenantNamespaceName,
+		"Host":      instanceName + "." + tenantNamespaceName + ".svc.cluster.local",
+		"Port":      "5432",
+		"DbName":    tenantNamespaceName,
+		"Username":  tenantNamespaceName,
+		"Password":  tenantDbPassword,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render tenant secret template: %v\n", tenantId, err)
+		return
+	}
+	var ts corev1.Secret
+	if err := yaml.Unmarshal(tsYaml, &ts); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal tenant secret YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.CoreV1().Secrets(ts.Namespace).Create(ctx, &ts, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create tenant database secret: %v\n", tenantId, err)
+		return
+	}
+
+	dbInitYaml, err := renderTemplate("psql-init-job.yaml", map[string]string{
+		"Namespace": tenantNamespaceName,
+		"TenantId":  tenantId,
+		"Id":        instanceName[len(instanceName)-6:],
+		"Host":      ts.StringData["DB_HOST"],
+		"Username":  ts.StringData["DB_USERNAME"],
+		"DbName":    ts.StringData["DB_NAME"],
+		"Password":  ts.StringData["DB_PASSWORD"],
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render init job template: %v\n", tenantId, err)
+		return
+	}
+	var job batchv1.Job
+	if err := yaml.Unmarshal(dbInitYaml, &job); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal job YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.BatchV1().Jobs(job.Namespace).Create(ctx, &job, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create tenant database init job: %v\n", tenantId, err)
+		return
+	}
+
+	// TENANT DEPLOYMENT
+	deploymentYaml, err := renderTemplate("tenant-service-deployment.yaml", map[string]string{
+		"Namespace": tenantNamespaceName,
+	})
+	if err != nil {
+		fmt.Printf("❌ [%s] Failed to render deployment template: %v\n", tenantId, err)
+		return
+	}
+	var deployment appsv1.Deployment
+	if err := yaml.Unmarshal(deploymentYaml, &deployment); err != nil {
+		fmt.Printf("❌ [%s] Failed to unmarshal deployment YAML: %v\n", tenantId, err)
+		return
+	}
+	if _, err := kubeClient.AppsV1().Deployments(tenantNamespaceName).Create(ctx, &deployment, metav1.CreateOptions{}); err != nil {
+		fmt.Printf("❌ [%s] Failed to create tenant deployment: %v\n", tenantId, err)
+		return
+	}
+
+	for {
+		pods, err := kubeClient.CoreV1().Pods(tenantNamespaceName).List(ctx, metav1.ListOptions{
+			LabelSelector: "app=backend",
+		})
+		if err != nil {
+			fmt.Printf("❌ [%s] Failed to list pods: %v\n", tenantId, err)
+			return
+		}
+
+		if len(pods.Items) > 0 {
+			pod := pods.Items[0]
+			for _, condition := range pod.Status.Conditions {
+				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
+					end := time.Now()
+					duration := end.Sub(start).Seconds()
+					tenantProvisioningDuration.WithLabelValues("true").Observe(duration)
+					return
+				}
+			}
+		}
+
+		// Wait and retry
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func provisionSharedTenant(ctx context.Context, index int) {
 	start := time.Now()
 	tenantId := uuid.New().String()
 	tenantNamespaceName := "tenant-" + tenantId
@@ -458,9 +699,10 @@ func provisionTenant(ctx context.Context, index int, dedicated bool) {
 			return
 		}
 
-		msYaml, err := renderTemplate("shared-postgresql-master-secret.yaml", map[string]string{
-			"Id":       instanceId,
-			"Password": masterPassword,
+		msYaml, err := renderTemplate("psql-master-secret.yaml", map[string]string{
+			"Namespace": "shared-services",
+			"Id":        instanceId,
+			"Password":  masterPassword,
 		})
 		if err != nil {
 			fmt.Printf("❌ [%s] Failed to render master secret template: %v\n", tenantId, err)
@@ -610,7 +852,7 @@ func provisionTenant(ctx context.Context, index int, dedicated bool) {
 				if condition.Type == corev1.PodReady && condition.Status == corev1.ConditionTrue {
 					end := time.Now()
 					duration := end.Sub(start).Seconds()
-					tenantProvisioningDuration.WithLabelValues(strconv.FormatBool(dedicated)).Observe(duration)
+					tenantProvisioningDuration.WithLabelValues("false").Observe(duration)
 					return
 				}
 			}

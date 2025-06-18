@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -14,7 +15,16 @@ var processes []*exec.Cmd
 
 const promDataDir = ".prom-tmp"
 
+var (
+	amount      int
+	dedicatedDB bool
+)
+
 func main() {
+	flag.IntVar(&amount, "amount", 100, "Number of tenant environments to create")
+	flag.BoolVar(&dedicatedDB, "dedicated-db", false, "Use dedicated DB")
+	flag.Parse()
+
 	setupSignalHandler()
 
 	wd, err := os.Getwd()
@@ -117,13 +127,13 @@ func main() {
 		return nil
 	})
 
-	runStep("Create 100 tenant environments", func() error {
-		wd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get working directory: %w", err)
-		}
-
-		return runCommand("kubectl", "apply", "-f", wd+"/test/operator-runner/fixtures/hundred_shared_tenants.yml")
+	runStep(fmt.Sprintf("Create %d tenant environments", amount), func() error {
+		yaml := generateTenantCRYaml(amount, dedicatedDB)
+		cmd := exec.Command("kubectl", "apply", "-f", "-")
+		cmd.Stdin = strings.NewReader(yaml)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		return cmd.Run()
 	})
 
 	fmt.Println("🕒 CRs deployed. Observe Grafana at http://localhost:3000. Press Ctrl+C to clean up.")
@@ -212,4 +222,37 @@ func cleanupAndExit() {
 
 	fmt.Println("✅ Cleanup complete.")
 	os.Exit(0)
+}
+
+func generateTenantCRYaml(amount int, dedicated bool) string {
+	var builder strings.Builder
+
+	dedicatedStr := "false"
+	if dedicated {
+		dedicatedStr = "true"
+	}
+
+	for i := 1; i <= amount; i++ {
+		name := fmt.Sprintf("tenant-%02d", i)
+		yaml := fmt.Sprintf(`apiVersion: tenant.core.mellifluus.io/v1
+kind: TenantEnvironment
+metadata:
+  name: %s
+  namespace: default
+spec:
+  displayName: "%s"
+  resourceQuotas:
+    cpuLimit: "2"
+    memoryLimit: "2Gi"
+    storageLimit: "2Gi"
+    podLimit: 3
+  database:
+    dedicatedInstance: %s
+---
+`, name, name, dedicatedStr)
+
+		builder.WriteString(yaml)
+	}
+
+	return builder.String()
 }

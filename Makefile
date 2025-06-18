@@ -238,11 +238,11 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 
 .PHONY: test-operator-runner
 test-operator-runner: ## Start operator tests using test/operator-runner/main.go
-	go run ./test/operator-runner/main.go
+	go run ./test/operator-runner/main.go $(ARGS)
 
 .PHONY: test-scripted-runner
 test-scripted-runner: ## Start scripted tests using test/scripted-runner/main.go
-	go run ./test/scripted-runner/main.go
+	go run ./test/scripted-runner/main.go $(ARGS)
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
