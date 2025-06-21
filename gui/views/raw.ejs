@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Raw CR: <%= crName %></title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .json-string { color: #059669; }
+    .json-number { color: #7c3aed; }
+    .json-boolean { color: #dc2626; }
+    .json-null { color: #6b7280; }
+    .json-key { color: #1d4ed8; font-weight: 600; }
+  </style>
+</head>
+<body class="bg-gray-100 p-6">
+  <div class="max-w-6xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h1 class="text-3xl font-bold text-gray-900">Raw Custom Resource</h1>
+        <p class="text-lg text-gray-600 mt-1">Name: <span class="font-semibold"><%= crName %></span></p>
+      </div>
+      <div class="flex space-x-4">
+        <button id="copyBtn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors">
+          📋 Copy to Clipboard
+        </button>
+        <a href="/" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600 transition-colors">
+          ← Back
+        </a>
+      </div>
+    </div>
+
+    <!-- Quick Info Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="font-semibold text-gray-700 mb-2">API Version</h3>
+        <p class="text-sm text-gray-900"><%= cr.apiVersion %></p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="font-semibold text-gray-700 mb-2">Kind</h3>
+        <p class="text-sm text-gray-900"><%= cr.kind %></p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="font-semibold text-gray-700 mb-2">Namespace</h3>
+        <p class="text-sm text-gray-900"><%= cr.metadata.namespace || 'default' %></p>
+      </div>
+      <div class="bg-white rounded-lg shadow p-4">
+        <h3 class="font-semibold text-gray-700 mb-2">Created</h3>
+        <p class="text-sm text-gray-900">
+          <% if (cr.metadata.creationTimestamp) { %>
+            <%= new Date(cr.metadata.creationTimestamp).toLocaleString() %>
+          <% } else { %>
+            N/A
+          <% } %>
+        </p>
+      </div>
+    </div>
+
+    <!-- Status Overview (if available) -->
+    <% if (cr.status) { %>
+    <div class="bg-white rounded-lg shadow p-6 mb-6">
+      <h2 class="text-xl font-semibold text-gray-900 mb-4">Status Overview</h2>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="flex items-center">
+          <span class="text-sm font-medium text-gray-700 mr-2">Ready:</span>
+          <% if (cr.status.readyAt) { %>
+            <span class="text-xl">✅</span>
+            <span class="text-xs text-gray-500 ml-2">Since <%= new Date(cr.status.readyAt).toLocaleString() %></span>
+          <% } else { %>
+            <span class="text-xl">❌</span>
+          <% } %>
+        </div>
+        <% if (cr.status.databaseStatus) { %>
+        <div class="flex items-center">
+          <span class="text-sm font-medium text-gray-700 mr-2">Database:</span>
+          <span class="px-2 py-1 text-xs rounded-full <%= cr.status.databaseStatus === 'Ready' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' %>">
+            <%= cr.status.databaseStatus %>
+          </span>
+        </div>
+        <% } %>
+        <% if (cr.spec.replicas) { %>
+        <div class="flex items-center">
+          <span class="text-sm font-medium text-gray-700 mr-2">Replicas:</span>
+          <span class="text-sm text-gray-900"><%= cr.spec.replicas %></span>
+        </div>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+
+    <!-- Raw JSON Display -->
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+      <div class="bg-gray-50 px-6 py-3 border-b border-gray-200">
+        <h2 class="text-lg font-semibold text-gray-900">Raw YAML/JSON</h2>
+      </div>
+      <div class="p-6">
+        <div class="bg-gray-900 rounded-lg p-4 overflow-auto">
+          <pre id="jsonContent" class="text-sm text-gray-100 whitespace-pre-wrap"><%= rawJson %></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- YAML Export Section -->
+    <div class="mt-6 bg-white rounded-lg shadow p-6">
+      <h2 class="text-lg font-semibold text-gray-900 mb-4">Export Options</h2>
+      <div class="flex space-x-4">
+        <button id="downloadYaml" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 transition-colors">
+          📄 Download as YAML
+        </button>
+        <button id="downloadJson" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 transition-colors">
+          📄 Download as JSON
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Copy to clipboard functionality
+    document.getElementById('copyBtn').addEventListener('click', function() {
+      const content = document.getElementById('jsonContent').textContent;
+      navigator.clipboard.writeText(content).then(function() {
+        const btn = document.getElementById('copyBtn');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '✅ Copied!';
+        btn.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+        btn.classList.add('bg-green-500');
+        setTimeout(function() {
+          btn.innerHTML = originalText;
+          btn.classList.remove('bg-green-500');
+          btn.classList.add('bg-blue-500', 'hover:bg-blue-600');
+        }, 2000);
+      }).catch(function(err) {
+        console.error('Failed to copy: ', err);
+        alert('Failed to copy to clipboard');
+      });
+    });
+
+    // Download as YAML
+    document.getElementById('downloadYaml').addEventListener('click', function() {
+      const crData = JSON.parse(document.getElementById('jsonContent').textContent);
+      // Convert JSON to YAML-like format (simplified)
+      const yamlContent = jsonToYaml(crData);
+      downloadFile('<%= crName %>.yaml', yamlContent, 'text/yaml');
+    });
+
+    // Download as JSON
+    document.getElementById('downloadJson').addEventListener('click', function() {
+      const content = document.getElementById('jsonContent').textContent;
+      downloadFile('<%= crName %>.json', content, 'application/json');
+    });
+
+    function downloadFile(filename, content, contentType) {
+      const blob = new Blob([content], { type: contentType });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    }
+
+    function jsonToYaml(obj, indent = 0) {
+      let yaml = '';
+      const spaces = '  '.repeat(indent);
+      
+      for (const [key, value] of Object.entries(obj)) {
+        if (value === null || value === undefined) {
+          yaml += `${spaces}${key}: null\n`;
+        } else if (typeof value === 'object' && !Array.isArray(value)) {
+          yaml += `${spaces}${key}:\n`;
+          yaml += jsonToYaml(value, indent + 1);
+        } else if (Array.isArray(value)) {
+          yaml += `${spaces}${key}:\n`;
+          value.forEach(item => {
+            if (typeof item === 'object') {
+              yaml += `${spaces}- \n`;
+              yaml += jsonToYaml(item, indent + 1).replace(new RegExp(`^${spaces}`, 'gm'), `${spaces}  `);
+            } else {
+              yaml += `${spaces}- ${item}\n`;
+            }
+          });
+        } else if (typeof value === 'string') {
+          yaml += `${spaces}${key}: "${value}"\n`;
+        } else {
+          yaml += `${spaces}${key}: ${value}\n`;
+        }
+      }
+      
+      return yaml;
+    }
+
+    // Syntax highlighting for JSON
+    function highlightJson() {
+      const pre = document.getElementById('jsonContent');
+      let content = pre.textContent;
+      
+      // Simple syntax highlighting
+      content = content.replace(/"([^"]+)":/g, '<span class="json-key">"$1":</span>');
+      content = content.replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>');
+      content = content.replace(/: (\d+)/g, ': <span class="json-number">$1</span>');
+      content = content.replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>');
+      content = content.replace(/: null/g, ': <span class="json-null">null</span>');
+      
+      pre.innerHTML = content;
+    }
+
+    // Apply syntax highlighting on load
+    document.addEventListener('DOMContentLoaded', highlightJson);
+  </script>
+</body>
+</html>

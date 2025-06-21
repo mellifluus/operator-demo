@@ -60,14 +60,6 @@ spec:
                     description: Whether to create a dedicated PostgreSQL instance
                       or use shared instance with separate database (default)
                     type: boolean
-                  status:
-                    default: Unassigned
-                    description: Status indicates whether the database has been assigned/provisioned
-                    enum:
-                    - Unassigned
-                    - Provisioning
-                    - Assigned
-                    type: string
                 type: object
               displayName:
                 description: DisplayName is a human-readable name for the tenant
@@ -78,7 +70,7 @@ spec:
                 default: 1
                 description: Replicas specifies the number of application replicas
                 format: int32
-                maximum: 3
+                maximum: 10
                 minimum: 1
                 type: integer
               resourceQuotas:
@@ -125,6 +117,15 @@ spec:
               createdAt:
                 description: CreatedAt timestamp when the tenant was created
                 format: date-time
+                type: string
+              databaseStatus:
+                default: Unassigned
+                description: Database status indicates whether the database has been
+                  assigned/provisioned
+                enum:
+                - Unassigned
+                - Provisioning
+                - Assigned
                 type: string
               message:
                 description: Message provides human-readable details about the current

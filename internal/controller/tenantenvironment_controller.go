@@ -83,9 +83,9 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	if strings.HasPrefix(req.Name, "pod-event:") {
 		return r.handlePodEventFromMapping(ctx, req, log)
-	} else if req.Namespace == "default" {
-		log.Info("Reconciling TenantEnvironment", "name", req.Name)
-	} else {
+	}
+
+	if req.Namespace != "default" {
 		return ctrl.Result{}, nil
 	}
 
@@ -143,8 +143,6 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Main reconciliation logic
-	log.Info("Reconciling tenant", "uid", tenantEnv.UID, "displayName", tenantEnv.Spec.DisplayName)
-
 	// Create namespace for tenant
 	if err := CreateNamespaceForTenant(ctx, r.Client, tenantEnv, log); err != nil {
 		log.Error(err, "Failed to create namespace")
@@ -160,9 +158,9 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 	}
 
 	// Create PostgreSQL database for tenant (only if not already assigned)
-	if tenantEnv.Spec.Database.Status == "Unassigned" {
-		tenantEnv.Spec.Database.Status = "Provisioning"
-		if err := r.Update(ctx, tenantEnv); err != nil {
+	if tenantEnv.Status.DatabaseStatus == "" || tenantEnv.Status.DatabaseStatus == "Unassigned" {
+		tenantEnv.Status.DatabaseStatus = "Provisioning"
+		if err := r.Status().Update(ctx, tenantEnv); err != nil {
 			log.Error(err, "Failed to update database status")
 			return ctrl.Result{}, err
 		}
@@ -172,20 +170,24 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 			return ctrl.Result{}, err
 		}
 
-		tenantEnv.Spec.Database.Status = "Assigned"
-		if err := r.Update(ctx, tenantEnv); err != nil {
+		tenantEnv.Status.DatabaseStatus = "Assigned"
+		if err := r.Status().Update(ctx, tenantEnv); err != nil {
 			log.Error(err, "Failed to update database status")
 			return ctrl.Result{}, err
 		}
 
 		log.Info("Database assigned successfully", "tenant", tenantEnv.Name)
 	} else {
-		log.Info("Database already assigned, skipping...", "tenant", tenantEnv.Name)
 	}
 
 	// Create tenant service deployment
 	if err := CreateTenantServiceDeployment(ctx, r.Client, tenantEnv, log); err != nil {
 		log.Error(err, "Failed to create tenant service deployment")
+		return ctrl.Result{}, err
+	}
+
+	if err := PatchReplicasIfNeeded(ctx, r.Client, tenantEnv, log); err != nil {
+		log.Error(err, "Failed to patch replicas for tenant service deployment")
 		return ctrl.Result{}, err
 	}
 

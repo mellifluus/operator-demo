@@ -363,3 +363,25 @@ func CreateTenantServiceDeployment(ctx context.Context, c client.Client, tenantE
 
 	return nil
 }
+
+func PatchReplicasIfNeeded(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, log logr.Logger) error {
+	tenantNamespace := "tenant-" + string(tenantEnv.UID)
+	deploymentName := "backend"
+
+	var deployment appsv1.Deployment
+	err := c.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: tenantNamespace}, &deployment)
+
+	if err != nil {
+		return err
+	}
+
+	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != tenantEnv.Spec.Replicas {
+		deployment.Spec.Replicas = int32Ptr(tenantEnv.Spec.Replicas)
+		if err := c.Update(ctx, &deployment); err != nil {
+			return err
+		}
+		log.Info("Updated deployment replicas", "namespace", tenantNamespace, "deployment", deploymentName, "replicas", tenantEnv.Spec.Replicas)
+	}
+
+	return nil
+}

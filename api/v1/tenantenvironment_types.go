@@ -32,7 +32,7 @@ type TenantEnvironmentSpec struct {
 	// Replicas specifies the number of application replicas
 	// +kubebuilder:default=1
 	// +kubebuilder:validation:Minimum=1
-	// +kubebuilder:validation:Maximum=3
+	// +kubebuilder:validation:Maximum=10
 	Replicas int32 `json:"replicas,omitempty"`
 
 	// ResourceQuotas defines resource limits for the tenant environment
@@ -67,11 +67,6 @@ type TenantDatabaseConfig struct {
 	// Whether to create a dedicated PostgreSQL instance or use shared instance with separate database (default)
 	// +kubebuilder:default=false
 	DedicatedInstance bool `json:"dedicatedInstance,omitempty"`
-
-	// Status indicates whether the database has been assigned/provisioned
-	// +kubebuilder:default="Unassigned"
-	// +kubebuilder:validation:Enum=Unassigned;Provisioning;Assigned
-	Status string `json:"status,omitempty"`
 }
 
 // TenantEnvironmentStatus defines the observed state of TenantEnvironment
@@ -92,6 +87,11 @@ type TenantEnvironmentStatus struct {
 
 	// ReadyAt timestamp when the tenant became ready
 	ReadyAt *metav1.Time `json:"readyAt,omitempty"`
+
+	// Database status indicates whether the database has been assigned/provisioned
+	// +kubebuilder:default="Unassigned"
+	// +kubebuilder:validation:Enum=Unassigned;Provisioning;Assigned
+	DatabaseStatus string `json:"databaseStatus,omitempty"`
 }
 
 // +kubebuilder:object:root=true

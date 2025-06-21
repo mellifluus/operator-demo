@@ -116,6 +116,48 @@ app.get('/edit/:name', async (req, res) => {
   }
 })
 
+// Route to show raw CR
+app.get('/raw/:name', async (req, res) => {
+  try {
+    const result = await k8sApi.getNamespacedCustomObject({ 
+      group, 
+      version, 
+      namespace, 
+      plural, 
+      name: req.params.name 
+    })
+    
+    // Clean up the CR by removing managedFields and other clutter
+    const cleanedCR = {
+      ...result,
+      metadata: {
+        ...result.metadata,
+        managedFields: undefined,
+        resourceVersion: undefined,
+        uid: undefined,
+        generation: undefined,
+        selfLink: undefined
+      }
+    }
+    
+    // Remove undefined fields
+    Object.keys(cleanedCR.metadata).forEach(key => {
+      if (cleanedCR.metadata[key] === undefined) {
+        delete cleanedCR.metadata[key]
+      }
+    })
+    
+    res.render('raw', { 
+      cr: result, // Keep original for status cards
+      crName: req.params.name,
+      rawJson: JSON.stringify(cleanedCR, null, 2)
+    })
+  } catch (err) {
+    console.error(err.body || err)
+    res.send('Failed to load CR: ' + (err.body?.message || err.message || err))
+  }
+})
+
 // Route to handle edit form submission
 app.post('/update/:name', async (req, res) => {
   try {
