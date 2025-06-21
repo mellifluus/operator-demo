@@ -368,19 +368,29 @@ func PatchReplicasIfNeeded(ctx context.Context, c client.Client, tenantEnv *tena
 	tenantNamespace := "tenant-" + string(tenantEnv.UID)
 	deploymentName := "backend"
 
+	// If replicas is 0, treat as unset and default to 1, then update the CR
+	if tenantEnv.Spec.Replicas == 0 {
+		tenantEnv.Spec.Replicas = 1
+		if err := c.Update(ctx, tenantEnv); err != nil {
+			return err
+		}
+		log.Info("Defaulted TenantEnvironment replicas to 1", "tenantEnv", tenantEnv.Name)
+	}
+
 	var deployment appsv1.Deployment
 	err := c.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: tenantNamespace}, &deployment)
-
 	if err != nil {
 		return err
 	}
 
-	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != tenantEnv.Spec.Replicas {
-		deployment.Spec.Replicas = int32Ptr(tenantEnv.Spec.Replicas)
+	desiredReplicas := tenantEnv.Spec.Replicas
+
+	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != desiredReplicas {
+		deployment.Spec.Replicas = &desiredReplicas
 		if err := c.Update(ctx, &deployment); err != nil {
 			return err
 		}
-		log.Info("Updated deployment replicas", "namespace", tenantNamespace, "deployment", deploymentName, "replicas", tenantEnv.Spec.Replicas)
+		log.Info("Updated deployment replicas", "namespace", tenantNamespace, "deployment", deploymentName, "replicas", desiredReplicas)
 	}
 
 	return nil

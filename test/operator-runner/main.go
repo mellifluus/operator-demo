@@ -127,11 +127,28 @@ func main() {
 		return nil
 	})
 
+	runStep("Start GUI", func() error {
+		guiPath := wd + "/gui/app.js"
+
+		cmd := exec.Command("node",
+			guiPath,
+		)
+
+		cmd.Stdout = nil
+		cmd.Stderr = nil
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("failed to start gui: %w", err)
+		}
+		processes = append(processes, cmd)
+		fmt.Printf("Started GUI [PID %d]\n", cmd.Process.Pid)
+		return nil
+	})
+
 	runStep(fmt.Sprintf("Create %d tenant environments", amount), func() error {
 		yaml := generateTenantCRYaml(amount, dedicatedDB)
 		cmd := exec.Command("kubectl", "apply", "-f", "-")
 		cmd.Stdin = strings.NewReader(yaml)
-		cmd.Stdout = os.Stdout
+		cmd.Stdout = nil
 		cmd.Stderr = os.Stderr
 		return cmd.Run()
 	})
