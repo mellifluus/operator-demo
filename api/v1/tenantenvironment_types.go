@@ -35,6 +35,10 @@ type TenantEnvironmentSpec struct {
 	// +kubebuilder:validation:Maximum=10
 	Replicas int32 `json:"replicas,omitempty"`
 
+	// ServiceVersion specifies the version of the tenant service to deploy
+	// +kubebuilder:default="latest"
+	ServiceVersion string `json:"serviceVersion,omitempty"`
+
 	// ResourceQuotas defines resource limits for the tenant environment
 	ResourceQuotas *TenantResourceQuotas `json:"resourceQuotas,omitempty"`
 

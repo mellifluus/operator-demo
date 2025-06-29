@@ -103,54 +103,49 @@ func CreateResourceQuotaForTenant(ctx context.Context, c client.Client, tenantEn
 	var resourceQuota corev1.ResourceQuota
 	err := c.Get(ctx, types.NamespacedName{Name: quotaName, Namespace: namespaceName}, &resourceQuota)
 
-	if errors.IsNotFound(err) {
-		// Build resource list from tenant spec
-		resourceList := corev1.ResourceList{}
+	// Build desired resource list from tenant spec
+	desiredResources := corev1.ResourceList{}
 
-		if tenantEnv.Spec.ResourceQuotas != nil {
-			if !tenantEnv.Spec.ResourceQuotas.CPULimit.IsZero() {
-				// Set limits quota to the specified value
-				resourceList[corev1.ResourceLimitsCPU] = tenantEnv.Spec.ResourceQuotas.CPULimit
+	if tenantEnv.Spec.ResourceQuotas != nil {
+		if !tenantEnv.Spec.ResourceQuotas.CPULimit.IsZero() {
+			desiredResources[corev1.ResourceLimitsCPU] = tenantEnv.Spec.ResourceQuotas.CPULimit
 
-				// For dedicated instances, set requests quota to 50% of limits to account for PostgreSQL
-				// For shared instances, set requests quota to 75% of limits
-				requestsMultiplier := "0.5"
-				if !tenantEnv.Spec.Database.DedicatedInstance {
-					requestsMultiplier = "0.75"
-				}
-
-				cpuRequests := tenantEnv.Spec.ResourceQuotas.CPULimit.DeepCopy()
-				if parsed, err := resource.ParseQuantity(cpuRequests.String()); err == nil {
-					if multiplier, err := resource.ParseQuantity(requestsMultiplier); err == nil {
-						cpuRequests.Set(parsed.MilliValue() * multiplier.MilliValue() / 1000)
-						resourceList[corev1.ResourceRequestsCPU] = cpuRequests
-					}
-				}
+			requestsMultiplier := "0.5"
+			if !tenantEnv.Spec.Database.DedicatedInstance {
+				requestsMultiplier = "0.75"
 			}
-			if !tenantEnv.Spec.ResourceQuotas.MemoryLimit.IsZero() {
-				// Set limits quota to the specified value
-				resourceList[corev1.ResourceLimitsMemory] = tenantEnv.Spec.ResourceQuotas.MemoryLimit
 
-				// For dedicated instances, set requests quota to 60% of limits to account for PostgreSQL
-				// For shared instances, set requests quota to 75% of limits
-				requestsMultiplier := int64(60)
-				if !tenantEnv.Spec.Database.DedicatedInstance {
-					requestsMultiplier = 75
+			cpuRequests := tenantEnv.Spec.ResourceQuotas.CPULimit.DeepCopy()
+			if parsed, err := resource.ParseQuantity(cpuRequests.String()); err == nil {
+				if multiplier, err := resource.ParseQuantity(requestsMultiplier); err == nil {
+					cpuRequests.Set(parsed.MilliValue() * multiplier.MilliValue() / 1000)
+					desiredResources[corev1.ResourceRequestsCPU] = cpuRequests
 				}
-
-				memoryRequests := tenantEnv.Spec.ResourceQuotas.MemoryLimit.DeepCopy()
-				memoryRequests.Set(tenantEnv.Spec.ResourceQuotas.MemoryLimit.Value() * requestsMultiplier / 100)
-				resourceList[corev1.ResourceRequestsMemory] = memoryRequests
-			}
-			if !tenantEnv.Spec.ResourceQuotas.StorageLimit.IsZero() {
-				resourceList[corev1.ResourceRequestsStorage] = tenantEnv.Spec.ResourceQuotas.StorageLimit
-			}
-			if tenantEnv.Spec.ResourceQuotas.PodLimit > 0 {
-				resourceList[corev1.ResourcePods] = *resource.NewQuantity(int64(tenantEnv.Spec.ResourceQuotas.PodLimit), resource.DecimalSI)
 			}
 		}
+		if !tenantEnv.Spec.ResourceQuotas.MemoryLimit.IsZero() {
+			desiredResources[corev1.ResourceLimitsMemory] = tenantEnv.Spec.ResourceQuotas.MemoryLimit
 
-		resourceQuota = corev1.ResourceQuota{
+			requestsMultiplier := int64(60)
+			if !tenantEnv.Spec.Database.DedicatedInstance {
+				requestsMultiplier = 75
+			}
+
+			memoryRequests := tenantEnv.Spec.ResourceQuotas.MemoryLimit.DeepCopy()
+			memoryRequests.Set(tenantEnv.Spec.ResourceQuotas.MemoryLimit.Value() * requestsMultiplier / 100)
+			desiredResources[corev1.ResourceRequestsMemory] = memoryRequests
+		}
+		if !tenantEnv.Spec.ResourceQuotas.StorageLimit.IsZero() {
+			desiredResources[corev1.ResourceRequestsStorage] = tenantEnv.Spec.ResourceQuotas.StorageLimit
+		}
+		if tenantEnv.Spec.ResourceQuotas.PodLimit > 0 {
+			desiredResources[corev1.ResourcePods] = *resource.NewQuantity(int64(tenantEnv.Spec.ResourceQuotas.PodLimit), resource.DecimalSI)
+		}
+	}
+
+	if errors.IsNotFound(err) {
+		// Create
+		newQuota := corev1.ResourceQuota{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      quotaName,
 				Namespace: namespaceName,
@@ -160,16 +155,41 @@ func CreateResourceQuotaForTenant(ctx context.Context, c client.Client, tenantEn
 				},
 			},
 			Spec: corev1.ResourceQuotaSpec{
-				Hard: resourceList,
+				Hard: desiredResources,
 			},
 		}
-
-		if err := c.Create(ctx, &resourceQuota); err != nil {
+		if err := c.Create(ctx, &newQuota); err != nil {
 			return err
 		}
 		log.Info("Created ResourceQuota", "namespace", namespaceName, "quota", quotaName)
+		return nil
 	} else if err != nil {
 		return err
+	}
+
+	// Update if there's a difference
+	updated := false
+	for key, val := range desiredResources {
+		current, exists := resourceQuota.Spec.Hard[key]
+		if !exists || current.Cmp(val) != 0 {
+			resourceQuota.Spec.Hard[key] = val
+			updated = true
+		}
+	}
+
+	// Check for removed fields
+	for key := range resourceQuota.Spec.Hard {
+		if _, exists := desiredResources[key]; !exists {
+			delete(resourceQuota.Spec.Hard, key)
+			updated = true
+		}
+	}
+
+	if updated {
+		if err := c.Update(ctx, &resourceQuota); err != nil {
+			return err
+		}
+		log.Info("Updated ResourceQuota", "namespace", namespaceName, "quota", quotaName)
 	}
 
 	return nil
@@ -361,36 +381,24 @@ func CreateTenantServiceDeployment(ctx context.Context, c client.Client, tenantE
 		return err
 	}
 
-	return nil
-}
+	updated := false
 
-func PatchReplicasIfNeeded(ctx context.Context, c client.Client, tenantEnv *tenantv1.TenantEnvironment, log logr.Logger) error {
-	tenantNamespace := "tenant-" + string(tenantEnv.UID)
-	deploymentName := "backend"
-
-	// If replicas is 0, treat as unset and default to 1, then update the CR
-	if tenantEnv.Spec.Replicas == 0 {
-		tenantEnv.Spec.Replicas = 1
-		if err := c.Update(ctx, tenantEnv); err != nil {
-			return err
-		}
-		log.Info("Defaulted TenantEnvironment replicas to 1", "tenantEnv", tenantEnv.Name)
+	if *deployment.Spec.Replicas != tenantEnv.Spec.Replicas {
+		deployment.Spec.Replicas = &tenantEnv.Spec.Replicas
+		updated = true
 	}
 
-	var deployment appsv1.Deployment
-	err := c.Get(ctx, types.NamespacedName{Name: deploymentName, Namespace: tenantNamespace}, &deployment)
-	if err != nil {
-		return err
+	expectedImage := "tenant-service:" + tenantEnv.Spec.ServiceVersion
+	if deployment.Spec.Template.Spec.Containers[0].Image != expectedImage {
+		deployment.Spec.Template.Spec.Containers[0].Image = expectedImage
+		updated = true
 	}
 
-	desiredReplicas := tenantEnv.Spec.Replicas
-
-	if deployment.Spec.Replicas == nil || *deployment.Spec.Replicas != desiredReplicas {
-		deployment.Spec.Replicas = &desiredReplicas
+	if updated {
 		if err := c.Update(ctx, &deployment); err != nil {
 			return err
 		}
-		log.Info("Updated deployment replicas", "namespace", tenantNamespace, "deployment", deploymentName, "replicas", desiredReplicas)
+		log.Info("Updated tenant service deployment", "deployment", deploymentName)
 	}
 
 	return nil

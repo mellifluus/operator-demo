@@ -182,12 +182,7 @@ func (r *TenantEnvironmentReconciler) Reconcile(ctx context.Context, req ctrl.Re
 
 	// Create tenant service deployment
 	if err := CreateTenantServiceDeployment(ctx, r.Client, tenantEnv, log); err != nil {
-		log.Error(err, "Failed to create tenant service deployment")
-		return ctrl.Result{}, err
-	}
-
-	if err := PatchReplicasIfNeeded(ctx, r.Client, tenantEnv, log); err != nil {
-		log.Error(err, "Failed to patch replicas for tenant service deployment")
+		log.Error(err, "Failed to create/update tenant service deployment")
 		return ctrl.Result{}, err
 	}
 
