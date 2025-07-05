@@ -1,11 +1,16 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -18,12 +23,25 @@ const promDataDir = ".prom-tmp"
 var (
 	amount      int
 	dedicatedDB bool
+	runNumber   int
+	saveRun     bool
+	outDir      string
 )
 
 func main() {
 	flag.IntVar(&amount, "amount", 100, "Number of tenant environments to create")
 	flag.BoolVar(&dedicatedDB, "dedicated-db", false, "Use dedicated DB")
+	flag.IntVar(&runNumber, "run", -1, "Run number for exporting bucket data (optional)")
+	flag.StringVar(&outDir, "outDir", "", "Directory to export run data (required if --run is set)")
 	flag.Parse()
+
+	if runNumber >= 0 {
+		saveRun = true
+		if outDir == "" {
+			fmt.Println("❌ You must provide --outDir when using --run")
+			os.Exit(1)
+		}
+	}
 
 	setupSignalHandler()
 
@@ -177,6 +195,18 @@ func main() {
 
 		if allReady {
 			fmt.Println("✅ All tenants are Ready")
+
+			if saveRun {
+				fmt.Println("⏳ Waiting 10s to let Prometheus scrape...")
+				time.Sleep(10 * time.Second)
+				if err := exportBuckets(runNumber, outDir); err != nil {
+					fmt.Println("❌ Failed to export buckets:", err)
+				} else {
+					fmt.Printf("📦 Exported run data to %s/run_%02d.json\n", outDir, runNumber)
+				}
+				cleanupAndExit()
+			}
+
 			break
 		}
 
@@ -272,4 +302,79 @@ spec:
 	}
 
 	return builder.String()
+}
+
+func exportBuckets(run int, outputFolder string) error {
+	resp, err := http.Get("http://localhost:9090/api/v1/query?query=tenant_provisioning_duration_seconds_bucket")
+	if err != nil {
+		return fmt.Errorf("failed to query Prometheus: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return fmt.Errorf("unexpected Prometheus response code: %d", resp.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read Prometheus response: %w", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return fmt.Errorf("failed to parse Prometheus JSON: %w", err)
+	}
+
+	results, ok := parsed["data"].(map[string]interface{})["result"].([]interface{})
+	if !ok {
+		return fmt.Errorf("unexpected Prometheus result format")
+	}
+
+	var buckets []map[string]interface{}
+	for _, r := range results {
+		entry := r.(map[string]interface{})
+		metric := entry["metric"].(map[string]interface{})
+		le := metric["le"].(string)
+		value := entry["value"].([]interface{})[1].(string)
+
+		count, err := strconv.Atoi(value)
+		if err != nil {
+			continue
+		}
+
+		if le == "+Inf" {
+			buckets = append(buckets, map[string]interface{}{
+				"le":    le, // keep it as string
+				"count": count,
+			})
+		} else {
+			leFloat, err := strconv.ParseFloat(le, 64)
+			if err != nil {
+				continue
+			}
+			buckets = append(buckets, map[string]interface{}{
+				"le":    leFloat,
+				"count": count,
+			})
+		}
+	}
+
+	if err := os.MkdirAll(outputFolder, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
+	outFile := filepath.Join(outputFolder, fmt.Sprintf("run_%02d.json", run))
+	if err := os.WriteFile(outFile, mustMarshal(buckets), 0644); err != nil {
+		return fmt.Errorf("failed to write bucket file: %w", err)
+	}
+
+	return nil
+}
+
+func mustMarshal(data interface{}) []byte {
+	out, err := json.MarshalIndent(data, "", "  ")
+	if err != nil {
+		panic(err)
+	}
+	return out
 }
