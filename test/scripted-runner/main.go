@@ -105,6 +105,10 @@ func main() {
 		return dockerImageOrBuild("tenant-service:latest", "make", "build-service")
 	})
 
+	runStep("Checking postgres:15-alpine image", func() error {
+		return dockerImageOrPull("postgres:15-alpine")
+	})
+
 	runStep("Checking for existing kind cluster", func() error {
 		if output, err := exec.Command("kind", "get", "clusters").Output(); err == nil && string(output) == "kind\n" {
 			fmt.Println("Kind cluster exists, deleting...")
@@ -133,6 +137,10 @@ func main() {
 
 	runStep("make load-service", func() error {
 		return runCommand("make", "load-service")
+	})
+
+	runStep("Loading postgres image into cluster", func() error {
+		return runCommand("kind", "load", "docker-image", "postgres:15-alpine")
 	})
 
 	runStep("Starting Prometheus", func() error {
@@ -194,6 +202,17 @@ func dockerImageOrBuild(image string, buildCmd ...string) error {
 	if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
 		fmt.Printf("Image %s not found. Building...\n", image)
 		return runCommand(buildCmd[0], buildCmd[1:]...)
+	}
+	fmt.Printf("Image %s found ✅\n", image)
+	return nil
+}
+
+func dockerImageOrPull(image string) error {
+	if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
+		fmt.Printf("Image %s not found. Pulling...\n", image)
+		if err := runCommand("docker", "pull", image); err != nil {
+			return fmt.Errorf("failed to pull image %s: %w", image, err)
+		}
 	}
 	fmt.Printf("Image %s found ✅\n", image)
 	return nil
@@ -411,7 +430,7 @@ func deployTenants(amount int, dedicated bool) error {
 			defer wg.Done()
 			ctx := context.Background()
 			if dedicated {
-				provisionDedicatedTenant(ctx, index)
+				provisionDedicatedTenant(ctx)
 			} else {
 				provisionSharedTenant(ctx, index)
 			}
@@ -434,7 +453,7 @@ func deployTenants(amount int, dedicated bool) error {
 	return nil
 }
 
-func provisionDedicatedTenant(ctx context.Context, index int) {
+func provisionDedicatedTenant(ctx context.Context) {
 	start := time.Now()
 	tenantId := uuid.New().String()
 	tenantNamespaceName := "tenant-" + tenantId

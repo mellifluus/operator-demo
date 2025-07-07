@@ -19,7 +19,7 @@ spec:
       priorityClassName: system-cluster-critical
       containers:
         - name: postgresql
-          image: postgres:15
+          image: postgres:15-alpine
           imagePullPolicy: IfNotPresent
           ports:
             - name: postgresql

@@ -59,6 +59,10 @@ func main() {
 		return dockerImageOrBuild("tenant-service:latest", "make", "build-service")
 	})
 
+	runStep("Checking postgres:15-alpine image", func() error {
+		return dockerImageOrPull("postgres:15-alpine")
+	})
+
 	runStep("Checking for existing kind cluster", func() error {
 		cmd := exec.Command("kind", "get", "clusters")
 		output, err := cmd.Output()
@@ -86,6 +90,10 @@ func main() {
 
 	runStep("make load-controller", func() error {
 		return runCommand("make", "load-controller")
+	})
+
+	runStep("Loading postgres:15-alpine image into cluster", func() error {
+		return runCommand("kind", "load", "docker-image", "postgres:15-alpine")
 	})
 
 	runStep("make deploy", func() error {
@@ -228,6 +236,17 @@ func dockerImageOrBuild(image string, buildCmd ...string) error {
 	if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
 		fmt.Printf("Image %s not found. Building...\n", image)
 		return runCommand(buildCmd[0], buildCmd[1:]...)
+	}
+	fmt.Printf("Image %s found ✅\n", image)
+	return nil
+}
+
+func dockerImageOrPull(image string) error {
+	if err := exec.Command("docker", "image", "inspect", image).Run(); err != nil {
+		fmt.Printf("Image %s not found. Pulling...\n", image)
+		if err := runCommand("docker", "pull", image); err != nil {
+			return fmt.Errorf("failed to pull image %s: %w", image, err)
+		}
 	}
 	fmt.Printf("Image %s found ✅\n", image)
 	return nil

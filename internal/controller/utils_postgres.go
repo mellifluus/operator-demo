@@ -287,7 +287,7 @@ func createPostgreSQLStatefulSet(ctx context.Context, c client.Client, tenantEnv
 						Containers: []corev1.Container{
 							{
 								Name:  "postgresql",
-								Image: "postgres:" + version,
+								Image: "postgres:" + version + "-alpine",
 								EnvFrom: []corev1.EnvFromSource{
 									{
 										SecretRef: &corev1.SecretEnvSource{
