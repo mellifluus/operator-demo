@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -40,10 +40,11 @@ type TenantEnvironmentSpec struct {
 	ServiceVersion string `json:"serviceVersion,omitempty"`
 
 	// ResourceQuotas defines resource limits for the tenant environment
+	// +kubebuilder:default={"cpuLimit":"2","memoryLimit":"4Gi","storageLimit":"10Gi","podLimit":10}
 	ResourceQuotas *TenantResourceQuotas `json:"resourceQuotas,omitempty"`
 
-	// Database configuration for the tenant (required)
-	// +kubebuilder:validation:Required
+	// Database configuration for the tenant
+	// +kubebuilder:default={"dedicatedInstance": false}
 	Database TenantDatabaseConfig `json:"database"`
 }
 

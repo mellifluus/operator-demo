@@ -53,7 +53,9 @@ spec:
             description: TenantEnvironmentSpec defines the desired state of TenantEnvironment
             properties:
               database:
-                description: Database configuration for the tenant (required)
+                default:
+                  dedicatedInstance: false
+                description: Database configuration for the tenant
                 properties:
                   dedicatedInstance:
                     default: false
@@ -74,6 +76,11 @@ spec:
                 minimum: 1
                 type: integer
               resourceQuotas:
+                default:
+                  cpuLimit: "2"
+                  memoryLimit: 4Gi
+                  podLimit: 10
+                  storageLimit: 10Gi
                 description: ResourceQuotas defines resource limits for the tenant
                   environment
                 properties:
